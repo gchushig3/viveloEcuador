@@ -1,0 +1,21 @@
+# Dependencias y archivos generados
+**/node_modules
+**/dist
+**/.npm-cache
+**/coverage
+**/*.tsbuildinfo
+**/*.log
+
+# Variables de entorno y credenciales
+**/.env
+**/.env.*
+**/.keys
+**/*.pem
+**/*.key
+
+# Git
+.git
+**/.git
+.git-archives
+**/.secrets.json
+**/postgres.local.env

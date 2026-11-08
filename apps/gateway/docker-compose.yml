@@ -1,0 +1,18 @@
+services:
+  gateway:
+    build:
+      context: ../..
+      dockerfile: apps/gateway/Dockerfile
+      target: build
+    command: npm run start:dev
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+    ports:
+      - "${GATEWAY_PORT:-3000}:3000"
+    volumes:
+      - ./src:/app/apps/gateway/src
+      - /app/apps/gateway/node_modules
+    restart: unless-stopped

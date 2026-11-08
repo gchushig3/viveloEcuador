@@ -1,0 +1,34 @@
+export interface GatewayEnvironment {
+  NODE_ENV: 'development' | 'test' | 'production';
+  PORT: number;
+  IDENTITY_URL: string;
+  CART_URL: string;
+  BOOKING_URL: string;
+  CATALOG_URL: string;
+  INVENTORY_URL: string;
+  PAYMENT_URL: string;
+  AUDIT_URL: string;
+  IDENTITY_API_PREFIX: string;
+  CART_API_PREFIX: string;
+  BOOKING_API_PREFIX: string;
+  CATALOG_API_PREFIX: string;
+  INVENTORY_API_PREFIX: string;
+  PAYMENT_API_PREFIX: string;
+  AUDIT_API_PREFIX: string;
+  JWT_JWKS_URL: string;
+  JWT_PUBLIC_KEY?: string;
+  JWT_ISSUER: string;
+  JWT_AUDIENCE: string;
+  CORS_ORIGINS: string[];
+  RATE_LIMIT_CUSTOMER: number;
+  RATE_LIMIT_PARTNER: number;
+  RATE_LIMIT_ADMIN: number;
+  PROXY_TIMEOUT_MS: number;
+  HEALTH_TIMEOUT_MS: number;
+  HEALTH_IDENTITY_PATH: string;
+  HEALTH_CART_PATH: string;
+  HEALTH_BOOKING_PATH: string;
+  HEALTH_CATALOG_PATH: string;
+  HEALTH_INVENTORY_PATH: string;
+  HEALTH_PAYMENT_PATH: string;
+}

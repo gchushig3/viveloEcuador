@@ -1,0 +1,167 @@
+<div class="min-h-screen bg-stone-50 text-slate-900">
+  <header class="sticky top-0 z-10 border-b border-stone-200 bg-white/95 backdrop-blur">
+    <nav class="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-4 sm:px-8" aria-label="Navegación principal">
+      <a routerLink="/" class="flex items-center gap-3 font-bold tracking-tight" id="inicio">
+        <span class="grid size-10 place-items-center rounded-xl bg-teal-700 text-lg text-white" aria-hidden="true">V</span>
+        <span class="text-xl">Vívelo <span class="text-teal-700">Ecuador</span></span>
+      </a>
+      <div class="flex flex-wrap items-center gap-3 sm:gap-5">
+        <a routerLink="/actividades" class="text-sm font-semibold text-slate-700 hover:text-teal-800">Experiencias</a>
+        @if (autenticado()) {
+          <a routerLink="/reservas" class="text-sm font-semibold text-slate-700 hover:text-teal-800">Mis reservas</a>
+          @if (authService.isAdmin()) { <a routerLink="/admin" class="rounded-lg border px-3 py-2 text-sm font-semibold text-teal-800 focus-visible:outline-2 focus-visible:outline-teal-700">Administración</a> }
+          <span class="hidden max-w-48 truncate text-sm font-semibold text-slate-700 md:inline" [attr.title]="usuario()?.email ?? 'Sesión activa'">{{ usuario()?.name ?? usuario()?.email ?? 'Sesión activa' }}</span>
+          <button type="button" (click)="cerrarSesion()" class="rounded-lg border border-stone-300 px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-stone-50 sm:px-4">Cerrar sesión</button>
+        } @else {
+          <button type="button" (click)="abrirLogin()" class="rounded-lg bg-teal-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-teal-800">Iniciar sesión</button>
+        }
+      </div>
+    </nav>
+  </header>
+
+  <app-toast-container />
+  <router-outlet />
+
+  <footer class="flex flex-col items-center justify-center gap-2 border-t border-stone-200 bg-white py-6 text-center text-sm text-slate-500 sm:flex-row sm:gap-4">© 2026 Vívelo Ecuador · Descubre algo extraordinario</footer>
+
+  @if (loginModalAbierto()) {
+    <div class="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-slate-950/65 p-4 backdrop-blur-sm" (click)="cerrarLogin()">
+      <section class="my-auto w-full max-w-md overflow-hidden rounded-2xl border border-white/20 bg-white shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="login-titulo" (click)="$event.stopPropagation()">
+        <div class="flex items-start justify-between border-b border-stone-200 px-6 py-5">
+          <div>
+            <p class="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Vívelo Ecuador</p>
+            <h2 id="login-titulo" class="mt-1 text-2xl font-bold">{{ recuperacion() ? 'Recupera tu contraseña' : modoRegistro() ? 'Crea tu cuenta' : 'Inicia sesión' }}</h2>
+          </div>
+          <button type="button" (click)="cerrarLogin()" [disabled]="loginEnviando()" class="grid size-10 place-items-center rounded-full text-2xl text-slate-500 transition hover:bg-stone-100 hover:text-slate-900 disabled:opacity-40" aria-label="Cerrar inicio de sesión">×</button>
+        </div>
+
+        @if (recuperacion() === 'solicitar') {
+          <form [formGroup]="forgotForm" (ngSubmit)="solicitarRecuperacion()" class="space-y-5 p-6">
+            <p class="text-sm text-slate-600">Ingresa tu correo y te enviaremos un código para restablecer tu contraseña.</p>
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-semibold text-slate-700">Correo electrónico</span>
+              <input type="email" formControlName="email" autocomplete="username" placeholder="tu@correo.com" class="w-full rounded-xl border border-stone-300 px-4 py-3 text-sm outline-none transition focus:border-teal-700 focus:ring-2 focus:ring-teal-100">
+              @if (forgotForm.controls.email.touched && forgotForm.controls.email.invalid) {
+                <span class="mt-1 block text-xs text-red-700">Ingresa un correo electrónico válido.</span>
+              }
+            </label>
+            @if (errorLogin()) {
+              <p class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-5 text-red-800" role="alert">{{ errorLogin() }}</p>
+            }
+            <div class="flex flex-col-reverse gap-3 pt-1 sm:flex-row sm:justify-end">
+              <button type="button" (click)="mostrarLogin()" [disabled]="loginEnviando()" class="rounded-xl border border-stone-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-stone-50 disabled:opacity-50">Volver</button>
+              <button type="submit" [disabled]="loginEnviando()" class="rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 disabled:cursor-wait disabled:opacity-70">
+                @if (loginEnviando()) { Enviando... } @else { Enviar código }
+              </button>
+            </div>
+            <p class="text-center text-sm text-slate-600">¿Ya tienes un código? <button type="button" (click)="recuperacion.set('restablecer')" class="font-semibold text-teal-800 underline-offset-4 hover:underline">Restablecer contraseña</button></p>
+          </form>
+        } @else if (recuperacion() === 'restablecer') {
+          <form [formGroup]="resetForm" (ngSubmit)="restablecerContrasena()" class="space-y-5 p-6">
+            @if (authMessage()) {
+              <p class="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm leading-5 text-teal-900" role="status">{{ authMessage() }}</p>
+            }
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-semibold text-slate-700">Código de recuperación</span>
+              <input type="text" formControlName="token" autocomplete="one-time-code" placeholder="Pega el código del correo" class="w-full rounded-xl border border-stone-300 px-4 py-3 font-mono text-sm outline-none transition focus:border-teal-700 focus:ring-2 focus:ring-teal-100">
+              @if (resetForm.controls.token.touched && resetForm.controls.token.invalid) {
+                <span class="mt-1 block text-xs text-red-700">El código debe tener 43 caracteres.</span>
+              }
+            </label>
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-semibold text-slate-700">Nueva contraseña</span>
+              <input type="password" formControlName="new_password" autocomplete="new-password" placeholder="Mínimo 12 caracteres" class="w-full rounded-xl border border-stone-300 px-4 py-3 text-sm outline-none transition focus:border-teal-700 focus:ring-2 focus:ring-teal-100">
+              @if (resetForm.controls.new_password.touched && resetForm.controls.new_password.invalid) {
+                <span class="mt-1 block text-xs text-red-700">Usa al menos 12 caracteres y máximo 72 bytes UTF-8.</span>
+              }
+            </label>
+            @if (errorLogin()) {
+              <p class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-5 text-red-800" role="alert">{{ errorLogin() }}</p>
+            }
+            <div class="flex flex-col-reverse gap-3 pt-1 sm:flex-row sm:justify-end">
+              <button type="button" (click)="mostrarLogin()" [disabled]="loginEnviando()" class="rounded-xl border border-stone-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-stone-50 disabled:opacity-50">Volver</button>
+              <button type="submit" [disabled]="loginEnviando()" class="rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 disabled:cursor-wait disabled:opacity-70">
+                @if (loginEnviando()) { Guardando... } @else { Cambiar contraseña }
+              </button>
+            </div>
+          </form>
+        } @else if (modoRegistro()) {
+          <form [formGroup]="registerForm" (ngSubmit)="registrarse()" class="space-y-5 p-6">
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-semibold text-slate-700">Nombre</span>
+              <input type="text" maxlength="120" formControlName="first_name" autocomplete="given-name" placeholder="Tu nombre" class="w-full rounded-xl border border-stone-300 px-4 py-3 text-sm outline-none transition focus:border-teal-700 focus:ring-2 focus:ring-teal-100">
+              @if (registerForm.controls.first_name.touched && registerForm.controls.first_name.invalid) {
+                <span class="mt-1 block text-xs text-red-700">Ingresa un nombre de hasta 120 caracteres.</span>
+              }
+            </label>
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-semibold text-slate-700">Apellido</span>
+              <input type="text" maxlength="120" formControlName="last_name" autocomplete="family-name" placeholder="Tu apellido" class="w-full rounded-xl border border-stone-300 px-4 py-3 text-sm outline-none transition focus:border-teal-700 focus:ring-2 focus:ring-teal-100">
+              @if (registerForm.controls.last_name.touched && registerForm.controls.last_name.invalid) {
+                <span class="mt-1 block text-xs text-red-700">Ingresa un apellido de hasta 120 caracteres.</span>
+              }
+            </label>
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-semibold text-slate-700">Correo electrónico</span>
+              <input type="email" formControlName="email" autocomplete="email" placeholder="tu@correo.com" class="w-full rounded-xl border border-stone-300 px-4 py-3 text-sm outline-none transition focus:border-teal-700 focus:ring-2 focus:ring-teal-100">
+              @if (registerForm.controls.email.touched && registerForm.controls.email.invalid) {
+                <span class="mt-1 block text-xs text-red-700">Ingresa un correo electrónico válido.</span>
+              }
+            </label>
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-semibold text-slate-700">Contraseña</span>
+              <input type="password" formControlName="password" autocomplete="new-password" placeholder="Mínimo 12 caracteres" class="w-full rounded-xl border border-stone-300 px-4 py-3 text-sm outline-none transition focus:border-teal-700 focus:ring-2 focus:ring-teal-100">
+              @if (registerForm.controls.password.touched && registerForm.controls.password.invalid) {
+                <span class="mt-1 block text-xs text-red-700">Usa al menos 12 caracteres y máximo 72 bytes UTF-8.</span>
+              }
+            </label>
+            @if (authMessage()) {
+              <p class="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm leading-5 text-teal-900" role="status">{{ authMessage() }}</p>
+            }
+            @if (errorLogin()) {
+              <p class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-5 text-red-800" role="alert">{{ errorLogin() }}</p>
+            }
+            <div class="flex flex-col-reverse gap-3 pt-1 sm:flex-row sm:justify-end">
+              <button type="button" (click)="cerrarLogin()" [disabled]="loginEnviando()" class="rounded-xl border border-stone-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-stone-50 disabled:opacity-50">Cancelar</button>
+              <button type="submit" [disabled]="loginEnviando()" class="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 disabled:cursor-wait disabled:opacity-70">
+                @if (loginEnviando()) { Creando cuenta... } @else { Crear cuenta }
+              </button>
+            </div>
+            <p class="text-center text-sm text-slate-600">¿Ya tienes cuenta? <button type="button" (click)="mostrarLogin()" class="font-semibold text-teal-800 underline-offset-4 hover:underline">Inicia sesión</button></p>
+          </form>
+        } @else {
+          <form [formGroup]="loginForm" (ngSubmit)="iniciarSesion()" class="space-y-5 p-6">
+            @if (authMessage()) {
+              <p class="rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm leading-5 text-teal-900" role="status">{{ authMessage() }}</p>
+            }
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-semibold text-slate-700">Correo electrónico</span>
+              <input type="email" formControlName="email" autocomplete="username" placeholder="tu@correo.com" class="w-full rounded-xl border border-stone-300 px-4 py-3 text-sm outline-none transition focus:border-teal-700 focus:ring-2 focus:ring-teal-100">
+              @if (loginForm.controls.email.touched && loginForm.controls.email.invalid) {
+                <span class="mt-1 block text-xs text-red-700">Ingresa un correo electrónico válido.</span>
+              }
+            </label>
+            <label class="block">
+              <span class="mb-1.5 block text-sm font-semibold text-slate-700">Contraseña</span>
+              <input type="password" formControlName="password" autocomplete="current-password" placeholder="Tu contraseña" class="w-full rounded-xl border border-stone-300 px-4 py-3 text-sm outline-none transition focus:border-teal-700 focus:ring-2 focus:ring-teal-100">
+              @if (loginForm.controls.password.touched && loginForm.controls.password.invalid) {
+                <span class="mt-1 block text-xs text-red-700">La contraseña es obligatoria.</span>
+              }
+              <button type="button" (click)="mostrarRecuperacion()" class="mt-2 text-xs font-semibold text-teal-800 underline-offset-4 hover:underline">¿Olvidaste tu contraseña?</button>
+            </label>
+            @if (errorLogin()) {
+              <p class="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm leading-5 text-red-800" role="alert">{{ errorLogin() }}</p>
+            }
+            <div class="flex flex-col-reverse gap-3 pt-1 sm:flex-row sm:justify-end">
+              <button type="button" (click)="cerrarLogin()" [disabled]="loginEnviando()" class="rounded-xl border border-stone-300 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-stone-50 disabled:opacity-50">Cancelar</button>
+              <button type="submit" [disabled]="loginEnviando()" class="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-700 px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-800 disabled:cursor-wait disabled:opacity-70">
+                @if (loginEnviando()) { Verificando... } @else { Iniciar sesión }
+              </button>
+            </div>
+            <p class="text-center text-sm text-slate-600">¿No tienes cuenta? <button type="button" (click)="mostrarRegistro()" class="font-semibold text-teal-800 underline-offset-4 hover:underline">Crear cuenta</button></p>
+          </form>
+        }
+      </section>
+    </div>
+  }
+</div>

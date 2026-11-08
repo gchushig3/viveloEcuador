@@ -1,0 +1,56 @@
+<section class="my-6 overflow-hidden rounded-2xl border border-stone-200 bg-white shadow-sm" aria-labelledby="attraction-form-title">
+  <header class="border-b border-stone-200 bg-stone-50 p-6">
+    <p class="text-xs font-bold uppercase tracking-widest text-teal-700">API de Atracciones</p>
+    <h3 id="attraction-form-title" class="mt-2 text-2xl font-bold">{{ attraction() ? 'Editar atracción' : 'Crear atracción' }}</h3>
+    <p class="mt-2 text-sm text-slate-600">Los campos con * son obligatorios. La atracción se guarda como BORRADOR: después podrás completar tarifas, itinerario y horarios, y publicarla desde la lista.</p>
+  </header>
+  <form [formGroup]="form" (ngSubmit)="submit()" class="p-6" novalidate>
+    @if (error()) { <p role="alert" class="mb-5 rounded-xl bg-red-50 p-4 text-red-800">{{ error() }}</p> }
+    <fieldset [disabled]="sending() || loading()" class="grid gap-5 md:grid-cols-2">
+      <label class="md:col-span-2"><span class="mb-1 block font-semibold">Nombre *</span><input formControlName="name" maxlength="200" class="w-full rounded-xl border border-stone-300 p-3"></label>
+      <label class="md:col-span-2"><span class="mb-1 block font-semibold">Descripción *</span><textarea formControlName="description" rows="4" class="w-full rounded-xl border border-stone-300 p-3"></textarea><span class="text-xs text-slate-500">Al menos 10 caracteres.</span></label>
+      <label class="md:col-span-2"><span class="mb-1 block font-semibold">Descripción corta</span><textarea formControlName="short_description" rows="2" maxlength="280" class="w-full rounded-xl border border-stone-300 p-3"></textarea></label>
+      <label><span class="mb-1 block font-semibold">Tipo *</span><select formControlName="type" class="w-full rounded-xl border border-stone-300 p-3">@for (type of types; track type) { <option [value]="type">{{ typeLabels[type] }}</option> }</select></label>
+      <label><span class="mb-1 block font-semibold">Duración en horas *</span><input type="number" min="0.01" max="720" step="0.01" formControlName="duration_hours" class="w-full rounded-xl border border-stone-300 p-3"><span class="text-xs text-slate-500">Por ejemplo 2.5 equivale a 2 h 30 min.</span></label>
+      <label>
+        <span class="mb-1 block font-semibold">Ciudad *</span>
+        @if (cityOptions().length) {
+          <select formControlName="city_id" class="w-full rounded-xl border border-stone-300 p-3">
+            <option [ngValue]="null" disabled>Selecciona una ciudad</option>
+            @for (city of cityOptions(); track city.id) { <option [ngValue]="city.id">{{ city.name }}{{ city.province ? ' · ' + city.province : '' }}</option> }
+          </select>
+          <span class="text-xs text-slate-500">Solo ciudades activas del servicio de ubicaciones.</span>
+        } @else {
+          <input type="number" min="1" max="32767" step="1" formControlName="city_id" class="w-full rounded-xl border border-stone-300 p-3">
+          <span class="text-xs {{ citiesFailed() ? 'text-amber-700' : 'text-slate-500' }}">{{ catalogsLoading() ? 'Cargando ciudades...' : 'No se pudo cargar la lista de ciudades; ingresa el identificador manualmente.' }}</span>
+        }
+      </label>
+      <label>
+        <span class="mb-1 block font-semibold">Operador *</span>
+        @if (operatorOptions().length) {
+          <select formControlName="operator_id" class="w-full rounded-xl border border-stone-300 p-3">
+            <option value="" disabled>Selecciona un operador</option>
+            @for (operator of operatorOptions(); track operator.id) { <option [value]="operator.id">{{ operator.name }}{{ operator.ruc ? ' · RUC ' + operator.ruc : '' }}</option> }
+          </select>
+          <span class="text-xs text-slate-500">Solo operadores activos.</span>
+        } @else {
+          <input inputmode="numeric" formControlName="operator_id" class="w-full rounded-xl border border-stone-300 p-3">
+          <span class="text-xs {{ operatorsFailed() ? 'text-amber-700' : 'text-slate-500' }}">{{ catalogsLoading() ? 'Cargando operadores...' : operatorsFailed() ? 'No se pudo cargar la lista de operadores; ingresa el identificador manualmente.' : 'No hay operadores activos. Crea o activa uno antes de registrar atracciones.' }}</span>
+        }
+      </label>
+      <label><span class="mb-1 block font-semibold">Latitud *</span><input type="number" min="-90" max="90" step="any" formControlName="latitude" class="w-full rounded-xl border border-stone-300 p-3"><span class="text-xs text-slate-500">En Ecuador va de -5 a 1.5 (ej. Quito: -0.2202).</span></label>
+      <label><span class="mb-1 block font-semibold">Longitud *</span><input type="number" min="-180" max="180" step="any" formControlName="longitude" class="w-full rounded-xl border border-stone-300 p-3"><span class="text-xs text-slate-500">En Ecuador va de -92 a -75 (ej. Quito: -78.5123).</span></label>
+      <label><span class="mb-1 block font-semibold">Dirección</span><input formControlName="address" maxlength="255" class="w-full rounded-xl border border-stone-300 p-3"></label>
+      <label><span class="mb-1 block font-semibold">Punto de encuentro</span><input formControlName="meeting_point" maxlength="255" class="w-full rounded-xl border border-stone-300 p-3"></label>
+      <label><span class="mb-1 block font-semibold">Moneda</span><input formControlName="currency" maxlength="3" class="w-full rounded-xl border border-stone-300 p-3"></label>
+      <label><span class="mb-1 block font-semibold">Horas límite para cancelación</span><input type="number" min="0" max="32767" step="1" formControlName="cancellation_hours" class="w-full rounded-xl border border-stone-300 p-3"><span class="text-xs text-slate-500">Horas antes de la actividad hasta las que se puede cancelar.</span></label>
+      <label class="flex items-center gap-3 rounded-xl bg-stone-50 p-4"><input type="checkbox" formControlName="free_cancellation"><span>Permite cancelación gratuita</span></label>
+      <label class="flex items-center gap-3 rounded-xl bg-stone-50 p-4"><input type="checkbox" formControlName="featured"><span>Destacada</span></label>
+    </fieldset>
+    <div class="mt-6 flex flex-wrap gap-3">
+      @if (loading()) { <p role="status" class="self-center text-sm text-slate-600">Cargando los campos editables del backend...</p> }
+      <button type="submit" [disabled]="sending() || loading()" class="rounded-xl bg-teal-700 px-5 py-3 font-semibold text-white disabled:opacity-50">{{ sending() ? 'Guardando...' : 'Guardar atracción' }}</button>
+      <button type="button" [disabled]="sending() || loading()" (click)="cancelled.emit()" class="rounded-xl border px-5 py-3 font-semibold">Cancelar</button>
+    </div>
+  </form>
+</section>

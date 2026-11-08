@@ -1,0 +1,37 @@
+{
+  "name": "descubre-ec-gateway",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "start:dev": "nest start --watch",
+    "start:prod": "node dist/main.js",
+    "test": "npm run build && node --test test/*.test.mjs",
+    "lint": "oxlint --type-aware --deny-warnings src/",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@nestjs/common": "12.3.2",
+    "@nestjs/config": "12.0.1",
+    "@nestjs/core": "12.3.2",
+    "@nestjs/platform-express": "12.3.2",
+    "@nestjs/swagger": "12.0.5",
+    "jose": "6.2.13",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "12.0.11",
+    "@types/express": "5.0.6",
+    "@types/node": "24.10.0",
+    "oxlint": "^1.58.0",
+    "oxlint-tsgolint": "^7.0.2001",
+    "typescript": "6.0.3"
+  },
+  "engines": {
+    "node": ">=24.9.0 <25",
+    "npm": ">=11 <13"
+  }
+}

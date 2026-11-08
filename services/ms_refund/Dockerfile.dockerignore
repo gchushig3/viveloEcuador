@@ -1,0 +1,10 @@
+**/node_modules
+**/dist
+**/.env*
+**/.keys
+**/*.pem
+**/*.key
+.git
+.git-archives
+**/.secrets.json
+**/postgres.local.env

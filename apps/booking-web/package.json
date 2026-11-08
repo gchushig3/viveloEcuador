@@ -1,0 +1,47 @@
+{
+  "name": "booking-frontend",
+  "version": "0.0.0",
+  "scripts": {
+    "ng": "ng",
+    "start": "ng serve",
+    "build": "ng build",
+    "watch": "ng build --watch --configuration development",
+    "test": "ng test",
+    "test:admin-v2": "node e2e/admin-v2.cjs",
+    "test:admin-v2": "node e2e/admin-v2.cjs",
+    "test:integrated": "node e2e/integrated.cjs",
+    "test:admin-observability": "node e2e/admin-observability.cjs",
+    "test:admin-creation": "node e2e/admin-creation.cjs",
+    "test:observability-cross-device": "node e2e/observability-cross-device.cjs",
+    "test:marketplace-publication": "node e2e/marketplace-publication.cjs",
+    "test:marketplace-sale": "node e2e/marketplace-sale.cjs"
+  },
+  "private": true,
+  "packageManager": "npm@11.19.0",
+  "dependencies": {
+    "@angular/common": "^22.2.0",
+    "@angular/compiler": "^22.2.0",
+    "@angular/core": "^22.2.0",
+    "@angular/forms": "^22.2.0",
+    "@angular/platform-browser": "^22.2.0",
+    "@angular/router": "^22.2.0",
+    "qrcode-generator": "2.0.4",
+    "rxjs": "~7.8.0",
+    "tslib": "^2.3.0"
+  },
+  "devDependencies": {
+    "@angular/build": "^22.2.1",
+    "@angular/cli": "^22.2.1",
+    "@angular/compiler-cli": "^22.2.0",
+    "@playwright/test": "^1.63.0",
+    "@tailwindcss/postcss": "^4.3.3",
+    "autoprefixer": "^10.6.1",
+    "jsdom": "^30.0.0",
+    "jsqr": "1.4.0",
+    "postcss": "^8.5.28",
+    "prettier": "^3.8.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~6.0.2",
+    "vitest": "^5.0.0"
+  }
+}
