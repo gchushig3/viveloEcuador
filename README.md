@@ -6,6 +6,7 @@ Monorepo de la plataforma de reservas, su frontend y sus microservicios.
 
 - `apps/booking-web`: aplicación web Angular y sus pruebas E2E.
 - `apps/bff`: destino reservado.
+- `apps/esb`: bus de integración REST con proveedores; registro configurable, autenticación, correlación e idempotencia propagada. Consulta [su guía](apps/esb/README.md).
 - `apps/gateway`: API Gateway NestJS para enrutamiento, JWT/RBAC, health checks y observabilidad; consulta [su guía](apps/gateway/README.md).
 - `services/`: servicios NestJS, cada uno con sus propios scripts, dependencias, pruebas y configuración Docker.
 - `packages/shared-infrastructure`: infraestructura compartida de saga, RabbitMQ, gRPC y validación.
@@ -61,4 +62,4 @@ La segunda suite usa RabbitMQ temporal sobre TLS y comprueba rutas, mensajes per
 
 Antes de desplegar, publica Inventory con el proto nuevo y después Catalog; la tabla aditiva `booking_inventory_allocation` se prepara al iniciar Inventory y está también declarada en `services/ms_inventory/database/saga.sql`. Catalog prepara las columnas e índice de idempotencia en su inicialización. Se requieren los permisos DDL correspondientes, sin cambiar los datos existentes.
 
-El ESB externo de Booking no est? implementado en este repositorio. Las pruebas locales validan su contrato de entrada; no acreditan el recorrido por su infraestructura remota. Los pagos siguen siendo simulados. No se ejecut? despliegue remoto.
+El ESB REST local está implementado en `apps/esb`; consulta su README para configurarlo y ejecutar sus pruebas. El ESB externo de Booking sigue fuera de este repositorio y no se ha verificado su infraestructura remota. El registro local de proveedores se carga del entorno. Los pagos siguen siendo simulados. No se ejecutó despliegue remoto.
