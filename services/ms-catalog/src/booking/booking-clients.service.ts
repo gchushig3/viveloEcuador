@@ -3,8 +3,10 @@ import {
   ConflictException,
   Injectable,
   OnModuleInit,
+  ServiceUnavailableException,
 } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
+import { DataSource } from 'typeorm';
 
 export interface ClientRecord {
   client_id: string;
@@ -12,6 +14,8 @@ export interface ClientRecord {
   email: string;
   identificacion: string | null;
   telefono: string | null;
+  origenes?: string[];
+  creado_en?: string;
 }
 
 export interface ClientInput {
@@ -19,12 +23,10 @@ export interface ClientInput {
   email: string;
   identificacion?: string;
   telefono?: string;
+  origen?: 'TIENDA' | 'BOOKING';
 }
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const SELECT_CLIENT = `SELECT cli_uuid::text AS client_id, cli_nombre AS nombre,
-  cli_email AS email, cli_identificacion AS identificacion, cli_telefono AS telefono
-  FROM cliente_atraccion`;
 
 function optionalText(value: unknown, name: string, max: number) {
   if (value === undefined || value === null || value === '') return undefined;
@@ -44,55 +46,47 @@ export function parseClientInput(body: unknown): ClientInput {
   const b = (body ?? {}) as Record<string, unknown>;
   const nombre = optionalText(b.nombre, 'nombre', 200);
   if (!nombre) throw new BadRequestException('nombre invalido');
+  const origen = b.origen ?? 'BOOKING';
+  if (origen !== 'TIENDA' && origen !== 'BOOKING')
+    throw new BadRequestException('origen invalido');
   return {
     nombre,
     email: normalizeEmail(b.email),
-    identificacion: optionalText(b.identificacion, 'identificacion', 30),
+    identificacion: optionalText(b.identificacion, 'identificacion', 30)?.toUpperCase(),
     telefono: optionalText(b.telefono, 'telefono', 30),
+    origen,
   };
 }
 
 @Injectable()
 export class BookingClientsService implements OnModuleInit {
-  constructor(private readonly source: DataSource) {}
+  private readonly baseUrl: string;
+
+  constructor(
+    private readonly source: DataSource,
+    config: ConfigService,
+  ) {
+    this.baseUrl = (config.get<string>('CLIENT_SERVICE_URL') ?? 'http://127.0.0.1:3018/api/v2/clientes').replace(/\/$/, '');
+  }
 
   async onModuleInit(): Promise<void> {
     await this.ensureSchema();
   }
 
-  async ensureSchema(): Promise<void> {
-    await this.source.query(`
-      CREATE TABLE IF NOT EXISTS cliente_atraccion (
-        cli_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-        cli_uuid uuid NOT NULL DEFAULT gen_random_uuid() UNIQUE,
-        cli_nombre varchar(200) NOT NULL,
-        cli_email varchar(200) NOT NULL,
-        cli_identificacion varchar(30),
-        cli_telefono varchar(30),
-        cli_creado_en timestamptz NOT NULL DEFAULT now()
-      )`);
-    await this.source
-      .query(`CREATE UNIQUE INDEX IF NOT EXISTS ux_cliente_atraccion_email
-      ON cliente_atraccion (lower(cli_email))`);
-    await this.source
-      .query(`CREATE UNIQUE INDEX IF NOT EXISTS ux_cliente_atraccion_identificacion
-      ON cliente_atraccion (cli_identificacion) WHERE cli_identificacion IS NOT NULL`);
-  }
+  /** Los perfiles ahora pertenecen a ms-cliente; se conserva el método para compatibilidad. */
+  async ensureSchema(): Promise<void> {}
 
   private reservationColumns?: Promise<void>;
 
-  /** Idempotente; se ejecuta bajo demanda porque reserva_atraccion se crea en otro modulo. */
   ensureReservationColumns(): Promise<void> {
     this.reservationColumns ??= this.source
-      .query(
-        `ALTER TABLE reserva_atraccion
-          ADD COLUMN IF NOT EXISTS res_cliente_uuid uuid,
-          ADD COLUMN IF NOT EXISTS res_checkin_en timestamptz,
-          ADD COLUMN IF NOT EXISTS res_checkin_asistentes integer,
-          ADD COLUMN IF NOT EXISTS res_checkin_admin varchar(100),
-          ADD COLUMN IF NOT EXISTS res_checkin_observaciones varchar(500),
-          ADD COLUMN IF NOT EXISTS res_checkin_notificado boolean NOT NULL DEFAULT false`,
-      )
+      .query(`ALTER TABLE reserva_atraccion
+        ADD COLUMN IF NOT EXISTS res_cliente_uuid uuid,
+        ADD COLUMN IF NOT EXISTS res_checkin_en timestamptz,
+        ADD COLUMN IF NOT EXISTS res_checkin_asistentes integer,
+        ADD COLUMN IF NOT EXISTS res_checkin_admin varchar(100),
+        ADD COLUMN IF NOT EXISTS res_checkin_observaciones varchar(500),
+        ADD COLUMN IF NOT EXISTS res_checkin_notificado boolean NOT NULL DEFAULT false`)
       .then(() => undefined)
       .catch((error: unknown) => {
         this.reservationColumns = undefined;
@@ -101,107 +95,61 @@ export class BookingClientsService implements OnModuleInit {
     return this.reservationColumns;
   }
 
-  async find(
-    email?: string,
-    identificacion?: string,
-  ): Promise<ClientRecord | null> {
-    const mail = email ? normalizeEmail(email) : undefined;
-    const id = optionalText(identificacion, 'identificacion', 30);
-    if (!mail && !id)
-      throw new BadRequestException('email o identificacion requerido');
-    return this.lookup(this.source.manager, mail, id);
+  async find(email?: string, identificacion?: string): Promise<ClientRecord | null> {
+    const query = new URLSearchParams();
+    if (email) query.set('email', normalizeEmail(email));
+    if (identificacion) query.set('identificacion', optionalText(identificacion, 'identificacion', 30)!);
+    if (!query.size) throw new BadRequestException('email o identificacion requerido');
+    const result = await this.request(`${this.baseUrl}?${query}`);
+    if (result.status === 404) return null;
+    if (!result.ok) throw new ServiceUnavailableException('ms-cliente no disponible');
+    return await result.json() as ClientRecord;
   }
 
-  /** Reutiliza al turista por identificacion o email; nunca duplica. */
-  async register(
-    input: ClientInput,
-    manager?: EntityManager,
-  ): Promise<{ client: ClientRecord; created: boolean }> {
-    if (!manager)
-      return this.source.transaction((tx) => this.register(input, tx));
-    const email = input.email.toLowerCase();
-    await manager.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [
-      `cliente:${email}`,
-    ]);
-    if (input.identificacion)
-      await manager.query(
-        'SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
-        [`cliente-id:${input.identificacion}`],
-      );
-    const byEmail = await this.lookup(manager, email, undefined);
-    const byId = input.identificacion
-      ? await this.lookup(manager, undefined, input.identificacion)
-      : null;
-    if (byEmail && byId && byEmail.client_id !== byId.client_id)
-      throw new ConflictException(
-        'email e identificacion pertenecen a clientes distintos',
-      );
-    const existing = byEmail ?? byId;
-    if (existing) {
-      if (
-        existing.identificacion &&
-        input.identificacion &&
-        existing.identificacion !== input.identificacion
-      )
-        throw new ConflictException(
-          'el cliente ya tiene otra identificacion registrada',
-        );
-      await manager.query(
-        `UPDATE cliente_atraccion
-            SET cli_identificacion = COALESCE(cli_identificacion, $2),
-                cli_telefono = COALESCE(cli_telefono, $3)
-          WHERE cli_uuid = $1::uuid`,
-        [
-          existing.client_id,
-          input.identificacion ?? null,
-          input.telefono ?? null,
-        ],
-      );
-      const client = await this.lookupByUuid(manager, existing.client_id);
-      return { client: client ?? existing, created: false };
-    }
-    const [row] = await manager.query<Array<{ client_id: string }>>(
-      `INSERT INTO cliente_atraccion (cli_nombre, cli_email, cli_identificacion, cli_telefono)
-       VALUES ($1,$2,$3,$4) RETURNING cli_uuid::text AS client_id`,
-      [
-        input.nombre,
-        email,
-        input.identificacion ?? null,
-        input.telefono ?? null,
-      ],
-    );
-    const client = await this.lookupByUuid(manager, row?.client_id ?? '');
-    if (!client) throw new ConflictException('No se pudo registrar el cliente');
-    return { client, created: true };
+  async byId(id: string): Promise<ClientRecord | null> {
+    const result = await this.request(`${this.baseUrl}/id/${encodeURIComponent(id)}`);
+    if (result.status === 404) return null;
+    if (!result.ok) throw new ServiceUnavailableException('ms-cliente no disponible');
+    return await result.json() as ClientRecord;
   }
 
-  private async lookup(
-    manager: EntityManager,
-    email?: string,
-    identificacion?: string,
-  ): Promise<ClientRecord | null> {
-    if (identificacion) {
-      const [byId] = await manager.query<ClientRecord[]>(
-        `${SELECT_CLIENT} WHERE cli_identificacion = $1`,
-        [identificacion],
-      );
-      if (byId) return byId;
-    }
-    if (email) {
-      const [byEmail] = await manager.query<ClientRecord[]>(
-        `${SELECT_CLIENT} WHERE lower(cli_email) = $1`,
-        [email.toLowerCase()],
-      );
-      if (byEmail) return byEmail;
-    }
-    return null;
+  async register(input: ClientInput, _manager?: unknown): Promise<{ client: ClientRecord; created: boolean }> {
+    return this.registerAt(input, 'integration/register');
   }
 
-  private async lookupByUuid(manager: EntityManager, uuid: string) {
-    const [row] = await manager.query<ClientRecord[]>(
-      `${SELECT_CLIENT} WHERE cli_uuid = $1::uuid`,
-      [uuid],
-    );
-    return row ?? null;
+  async registerAdmin(input: ClientInput): Promise<{ client: ClientRecord; created: boolean }> {
+    return this.registerAt({ ...input, origen: 'TIENDA' }, 'admin');
+  }
+
+  private async registerAt(input: ClientInput, path: string): Promise<{ client: ClientRecord; created: boolean }> {
+    const result = await this.request(`${this.baseUrl}/${path}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...input, origen: input.origen ?? 'BOOKING' }),
+    });
+    if (!result.ok) {
+      const payload = await result.json().catch(() => null) as { message?: string } | null;
+      if (result.status === 409) throw new ConflictException(payload?.message ?? 'Conflicto de identidad del cliente');
+      if (result.status === 400) throw new BadRequestException(payload?.message ?? 'Datos de cliente invalidos');
+      throw new ServiceUnavailableException('ms-cliente no disponible');
+    }
+    const payload = await result.json() as { client_id: string; cliente: ClientRecord; reused?: boolean };
+    return { client: payload.cliente, created: !payload.reused };
+  }
+
+  async list(page: number, limit: number, q?: string) {
+    const query = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (q) query.set('q', q);
+    const result = await this.request(`${this.baseUrl}/admin?${query}`);
+    if (!result.ok) throw new ServiceUnavailableException('ms-cliente no disponible');
+    return await result.json() as { items: ClientRecord[]; total: number; page: number; limit: number; total_pages: number };
+  }
+
+  private async request(url: string, init?: RequestInit) {
+    try {
+      return await fetch(url, { ...init, signal: AbortSignal.timeout(4000) });
+    } catch {
+      throw new ServiceUnavailableException('ms-cliente no disponible');
+    }
   }
 }

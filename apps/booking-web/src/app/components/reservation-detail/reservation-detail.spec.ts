@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
 import { ReservationDetail } from './reservation-detail';
-import { API_URL } from '../../core/api.config';
+import { API_URL, CATALOG_API_URL } from '../../core/api.config';
 import { AuthService } from '../../services/auth.service';
 import { reservation } from '../../testing/booking.fixtures';
 import { ComentarioResponse, ReservationStatus } from '../../contracts/atracciones.contracts';
@@ -12,11 +12,11 @@ describe('Reservation detail and real comments', () => {
   let component: ReservationDetail;
   let http: HttpTestingController;
   const detailUrl = '/api/v1/atracciones/reservations/' + reservation.reservation_id;
-  const commentsUrl = '/api/v1/atracciones/' + reservation.attraction.id + '/comentarios';
+  const commentsUrl = '/api/v1/catalog/atracciones/' + reservation.attraction.id + '/comentarios';
   const comment: ComentarioResponse = { id: 'comment-id', atraccion_id: reservation.attraction.id, reserva_id: reservation.reservation_id, puntuacion: 4, comentario: 'Comentario creado por API', fecha_creacion: '2026-10-05T15:00:00Z' };
   beforeEach(() => {
     localStorage.clear();
-    TestBed.configureTestingModule({ imports: [ReservationDetail], providers: [provideHttpClient(), provideHttpClientTesting(), { provide: API_URL, useValue: '/api/v1' }] });
+    TestBed.configureTestingModule({ imports: [ReservationDetail], providers: [provideHttpClient(), provideHttpClientTesting(), { provide: API_URL, useValue: '/api/v1' }, { provide: CATALOG_API_URL, useValue: '/api/v1/catalog' }] });
     TestBed.inject(AuthService).authenticated.set(true);
     fixture = TestBed.createComponent(ReservationDetail); component = fixture.componentInstance; http = TestBed.inject(HttpTestingController);
     fixture.componentRef.setInput('reservationId', reservation.reservation_id); fixture.detectChanges();
@@ -40,6 +40,18 @@ describe('Reservation detail and real comments', () => {
     let emitted: unknown; component.cancelRequested.subscribe(res => emitted = res);
     [...fixture.nativeElement.querySelectorAll('button')].find((b: any) => b.textContent.includes('Cancelar reserva')).click();
     expect(emitted).toEqual(reservation);
+  });
+  it('hides cancellation for a past turn and does not emit even if invoked directly', () => {
+    load(); component.reservation.set({ ...reservation, date: '2000-01-01', time: '10:00' }); fixture.detectChanges();
+    expect(text()).not.toContain('Cancelar reserva');
+    expect(text()).toContain('Cancelación no disponible');
+    const emit = vi.fn(); component.cancelRequested.subscribe(emit); component.requestCancellation();
+    expect(emit).not.toHaveBeenCalled();
+  });
+  it('hides cancellation after check-in even while the internal status is confirmed', () => {
+    load(); component.reservation.set({ ...reservation, checkin_en: '2026-11-12T15:00:00Z' }); fixture.detectChanges();
+    expect(text()).not.toContain('Cancelar reserva');
+    expect(text()).toContain('Check-in realizado (Servicio iniciado, no cancelable)');
   });
   it('renders the QR identifier from the individual real reservation GET, not the input alone', () => {
     const idFromResponse = 'a1234567-1234-4234-8234-123456789abc';

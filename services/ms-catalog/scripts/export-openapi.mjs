@@ -9,6 +9,10 @@ import { configureOpenApi } from '../dist/common/openapi/configure-openapi.js';
 import { HealthController } from '../dist/health/health.controller.js';
 import { BookingCatalogService } from '../dist/booking/booking-catalog.service.js';
 import { CatalogEventsService } from '../dist/booking/catalog-events.service.js';
+import { BookingReservationsService } from '../dist/booking/booking-reservations.service.js';
+import { BookingCancellationController, BookingCancellationAliasController } from '../dist/modules/attractions/booking-contract.controller.js';
+import { ConfigService } from '@nestjs/config';
+import { DataSource } from 'typeorm';
 
 // Discover the real controllers without opening a database or invoking services.
 const modules = [
@@ -18,10 +22,13 @@ const modules = [
   ['operators', 'Operators'],
   ['attractions', 'Attractions'],
 ];
-const controllers = [HealthController];
+const controllers = [HealthController, BookingCancellationController, BookingCancellationAliasController];
 const providers = [
   { provide: BookingCatalogService, useValue: {} },
   { provide: CatalogEventsService, useValue: {} },
+  { provide: BookingReservationsService, useValue: {} },
+  { provide: ConfigService, useValue: new ConfigService() },
+  { provide: DataSource, useValue: { query: async () => [] } },
 ];
 for (const [folder, name] of modules) {
   const controller = await import(

@@ -1,0 +1,232 @@
+openapi: 3.0.3
+info:
+  title: MS Refund API
+  version: 1.0.0
+  description: |
+    Contrato REST de MS Refund. Registra solicitudes de reembolso, publica
+    reembolso.solicitado en el exchange Saga y actualiza la solicitud al
+    consumir pago.reembolsado. Los eventos AMQP se describen en
+    ms_refund-asyncapi-v1.yaml.
+servers:
+  - url: http://localhost:3015/api/v2
+    description: Desarrollo local; el puerto puede configurarse con PORT.
+security:
+  - BearerAuth: []
+tags:
+  - name: Reembolsos
+    description: Solicitud y consulta administrativa de reembolsos
+  - name: Salud
+    description: Estado del servicio
+paths:
+  /refunds:
+    post:
+      tags: [Reembolsos]
+      operationId: solicitarReembolso
+      summary: Registrar una solicitud de reembolso
+      description: |
+        Requiere un JWT RS256. correlationId identifica la solicitud en el
+        flujo Saga. Al repetir un correlationId existente con el mismo pag_id
+        y rem_monto se devuelve la solicitud existente; con valores diferentes
+        para esos campos se responde 409. Una solicitud pendiente vuelve a
+        publicarse al reintentar. Si la publicacion falla, la solicitud queda
+        persistida y se responde 503; reintente usando el mismo correlationId.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefundRequest'
+      responses:
+        '202':
+          description: Solicitud aceptada y persistida
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Refund'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: El rem_numero ya existe o el correlationId se asocio a otro pag_id o rem_monto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: No se pudo publicar el evento; la solicitud ya fue guardada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      tags: [Reembolsos]
+      operationId: listarReembolsos
+      summary: Listar reembolsos
+      description: Requiere un JWT RS256 con el rol ADMIN. Devuelve hasta 100 registros, rem_id descendente.
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Reembolsos ordenados por rem_id descendente
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 100
+                items:
+                  $ref: '#/components/schemas/Refund'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /health:
+    get:
+      tags: [Salud]
+      operationId: healthCheck
+      summary: Consultar el estado del servicio
+      security: []
+      responses:
+        '200':
+          description: Servicio disponible
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, service]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+                  service:
+                    type: string
+                    enum: [ms_refund]
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    BadRequest:
+      description: Solicitud invalida o JSON que no cumple el esquema
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: JWT ausente, invalido o expirado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: El JWT no tiene el rol ADMIN
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalServerError:
+      description: Error inesperado del servicio o de la persistencia
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    RefundRequest:
+      type: object
+      additionalProperties: false
+      required: [pag_id, correlationId, rem_numero, rem_monto]
+      properties:
+        pag_id:
+          $ref: '#/components/schemas/BigId'
+        correlationId:
+          type: string
+          format: uuid
+        rem_numero:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{1,30}$'
+        rem_monto:
+          type: number
+          minimum: 0
+          exclusiveMinimum: true
+          maximum: 9999999999.99
+          multipleOf: 0.01
+        rem_motivo:
+          type: string
+          maxLength: 300
+    Refund:
+      type: object
+      required:
+        - rem_id
+        - pag_id
+        - rem_numero
+        - rem_event_id
+        - rem_monto
+        - rem_motivo
+        - rem_referencia
+        - rem_correlation_id
+        - rem_estado
+        - rem_procesado_en
+        - rem_solicitado_en
+        - rem_creado_en
+      properties:
+        rem_id:
+          $ref: '#/components/schemas/BigId'
+        pag_id:
+          $ref: '#/components/schemas/BigId'
+        rem_numero:
+          type: string
+          maxLength: 30
+        rem_event_id:
+          type: string
+          format: uuid
+        rem_monto:
+          type: string
+          pattern: '^[0-9]+\.[0-9]{2}$'
+          description: Monto decimal con dos posiciones, serializado como string por TypeORM.
+        rem_motivo:
+          type: string
+          maxLength: 300
+          nullable: true
+        rem_referencia:
+          type: string
+          maxLength: 100
+          nullable: true
+        rem_correlation_id:
+          type: string
+          maxLength: 128
+        rem_estado:
+          type: string
+          enum: [PENDIENTE, PROCESADO]
+        rem_procesado_en:
+          type: string
+          format: date-time
+          nullable: true
+        rem_solicitado_en:
+          type: string
+          format: date-time
+        rem_creado_en:
+          type: string
+          format: date-time
+    BigId:
+      type: string
+      pattern: '^[1-9][0-9]{0,18}$'
+    Error:
+      type: object
+      description: Cuerpo de error HTTP NestJS
+      properties:
+        statusCode:
+          type: integer
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        error:
+          type: string

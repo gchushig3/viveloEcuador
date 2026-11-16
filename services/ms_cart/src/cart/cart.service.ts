@@ -35,10 +35,32 @@ export function idempotencyKey(value: string | undefined): string {
   return value;
 }
 interface ReservationRow {
+  created_at?: Date | string;
+  checkin_en?: string | null;
   state: string;
   paid: boolean;
   stock_confirmed: boolean;
   payload: ReservationData;
+}
+
+interface CancellationProgress {
+  status: string;
+  cancel_code: string;
+  reembolso_id: string;
+  monto_reembolsado: number;
+  refund: {
+    refund_id: string;
+    status: string;
+    amount: number;
+    currency: string;
+    message: string;
+  };
+  stock_restoration: {
+    status: string;
+    restored_spots: number;
+    message: string;
+  };
+  message: string;
 }
 
 @Injectable()
@@ -211,7 +233,10 @@ export class CartService {
 
   async reservation(userId: string, id: string) {
     const [row] = await this.source.query(
-      'SELECT reservation_id AS "reservationId",state,payload FROM saga_cart_reservation WHERE reservation_id=$1 AND user_id=$2',
+      `SELECT reservation_id AS "reservationId",state,payload,r.created_at AS "createdAt",c.response AS cancellation,h.response AS checkin,h.response->>'hora_checkin' AS checkin_en
+       FROM saga_cart_reservation r LEFT JOIN saga_http_request c ON c.request_key='cancel:'||r.reservation_id::text
+        LEFT JOIN saga_http_request h ON h.request_key='checkin:'||r.reservation_id::text
+       WHERE reservation_id=$1 AND user_id=$2`,
       [id, userId],
     );
     if (!row) throw new NotFoundException('Reservation not found');
@@ -221,17 +246,105 @@ export class CartService {
   async list(userId: string) {
     return this.source.query(
       `SELECT reservation_id AS "reservationId",state,paid,stock_confirmed AS "stockConfirmed",
-        created_at AS "createdAt",payload FROM saga_cart_reservation
-        WHERE user_id=$1 ORDER BY created_at DESC LIMIT 100`,
+        r.created_at AS "createdAt",payload,c.response AS cancellation,h.response AS checkin,h.response->>'hora_checkin' AS checkin_en FROM saga_cart_reservation r
+        LEFT JOIN saga_http_request c ON c.request_key='cancel:'||r.reservation_id::text
+        LEFT JOIN saga_http_request h ON h.request_key='checkin:'||r.reservation_id::text
+        WHERE user_id=$1 ORDER BY r.created_at DESC LIMIT 100`,
       [userId],
     );
   }
 
   async adminReservations() {
-    return this.source
-      .query(`SELECT reservation_id AS "reservationId",user_id::text AS "userId",
-      state,paid,stock_confirmed AS "stockConfirmed",created_at AS "createdAt",payload
-      FROM saga_cart_reservation ORDER BY created_at DESC LIMIT 100`);
+    return this.source.query(`SELECT r.reservation_id AS "reservationId",r.user_id::text AS "userId",
+      state,paid,stock_confirmed AS "stockConfirmed",r.created_at AS "createdAt",payload,
+      c.response AS cancellation,h.response AS checkin,h.response->>'hora_checkin' AS checkin_en
+      FROM saga_cart_reservation r
+      LEFT JOIN saga_http_request c ON c.request_key='cancel:'||r.reservation_id::text
+      LEFT JOIN saga_http_request h ON h.request_key='checkin:'||r.reservation_id::text
+      ORDER BY r.created_at DESC LIMIT 100`);
+  }
+
+  async adminCustomerUserIds() {
+    return this.source.query(
+      `SELECT DISTINCT user_id::text AS "userId"
+         FROM saga_cart_reservation
+        WHERE paid=true
+        ORDER BY "userId"`,
+    );
+  }
+
+  async adminSummary() {
+    const [reservas] = await this.source.query(`WITH reservations AS (
+      SELECT r.*, EXISTS(SELECT 1 FROM jsonb_array_elements(payload->'lines') l
+        WHERE l->>'date' = to_char(now() AT TIME ZONE 'America/Guayaquil','YYYY-MM-DD')) AS today,
+        EXISTS(SELECT 1 FROM jsonb_array_elements(payload->'lines') l
+        WHERE l->>'date' > to_char(now() AT TIME ZONE 'America/Guayaquil','YYYY-MM-DD')) AS upcoming,
+        (SELECT COALESCE(sum((l->>'adults')::int + (l->>'children')::int),0)
+         FROM jsonb_array_elements(payload->'lines') l
+         WHERE l->>'date' >= to_char(now() AT TIME ZONE 'America/Guayaquil','YYYY-MM-DD')) AS persons
+      FROM saga_cart_reservation r)
+      SELECT count(*)::int AS total,
+        count(*) FILTER (WHERE state='CONFIRMED')::int AS confirmadas,
+        count(*) FILTER (WHERE state='CANCELLED')::int AS canceladas,
+        count(*) FILTER (WHERE today AND state='CONFIRMED')::int AS hoy,
+        count(*) FILTER (WHERE upcoming AND state='CONFIRMED')::int AS proximas,
+        count(*) FILTER (WHERE created_at >= now()-interval '24 hours')::int AS ultimas_24h,
+        COALESCE(sum(persons) FILTER (WHERE state='CONFIRMED'),0)::int AS personas_proximas
+      FROM reservations`);
+    return { reservas };
+  }
+
+  async adminUserReservations(userId: string) {
+    return this.source.query(`SELECT r.reservation_id AS "reservationId",state,paid,
+      stock_confirmed AS "stockConfirmed",r.created_at AS "createdAt",payload,
+      c.response AS cancellation,h.response AS checkin,h.response->>'hora_checkin' AS checkin_en
+      FROM saga_cart_reservation r
+      LEFT JOIN saga_http_request c ON c.request_key='cancel:'||r.reservation_id::text
+      LEFT JOIN saga_http_request h ON h.request_key='checkin:'||r.reservation_id::text
+      WHERE user_id=$1 ORDER BY r.created_at DESC LIMIT 100`, [userId]);
+  }
+
+  async checkin(adminId: string, id: string, body: unknown) {
+    const input = body && typeof body === 'object' ? body as Record<string, unknown> : {};
+    const document = typeof input.documento_identidad === 'string' ? input.documento_identidad.trim() : '';
+    const guide = typeof input.guia_codigo === 'string' ? input.guia_codigo.trim() : '';
+    if (!/^\d{10}(?:\d{3})?$/.test(document) || !guide || guide.length > 100)
+      throw new BadRequestException('Documento de 10 o 13 digitos y guia requeridos');
+    return this.source.transaction(async manager => {
+      const [row] = await manager.query<ReservationRow[]>(
+        'SELECT state,paid,stock_confirmed,payload FROM saga_cart_reservation WHERE reservation_id=$1 FOR UPDATE', [id]);
+      if (!row) throw new NotFoundException('Reservation not found');
+      const [previous] = await manager.query('SELECT response FROM saga_http_request WHERE request_key=$1', [`checkin:${id}`]);
+      if (previous) return previous.response;
+      const [cancelling] = await manager.query('SELECT response FROM saga_http_request WHERE request_key=$1', [`cancel:${id}`]);
+      // Allow check-in for CONFIRMED or PENDING (paid, awaiting stock confirmation) reservations.
+      if ((!['CONFIRMED', 'PENDING'].includes(row.state)) || !row.paid || cancelling)
+        throw new ConflictException('Solo reservas pagadas y sin cancelacion en proceso');
+      // Match the document to the authenticated customer profile, never just accept a typed number.
+      const base = this.config.getOrThrow<string>('CLIENT_SERVICE_URL');
+      let response: Response;
+      try {
+        response = await fetch(`${base.replace(/\/$/, '')}?identificacion=${encodeURIComponent(document)}`, { signal: AbortSignal.timeout(4000) });
+      } catch { throw new ServiceUnavailableException('No se pudo verificar el documento del cliente'); }
+      if (response.status === 404) throw new BadRequestException('Documento del cliente no encontrado');
+      if (!response.ok) throw new ServiceUnavailableException('No se pudo verificar el documento del cliente');
+      const found = await response.json() as { client_id: string };
+      let detail: Response;
+      try { detail = await fetch(`${base.replace(/\/$/, '')}/id/${encodeURIComponent(found.client_id)}`, { signal: AbortSignal.timeout(4000) }); }
+      catch { throw new ServiceUnavailableException('No se pudo verificar el titular'); }
+      if (!detail.ok) throw new ServiceUnavailableException('No se pudo verificar el titular');
+      const client = await detail.json() as { usuario_id?: string };
+      if (String(client.usuario_id) !== String(row.payload.userId))
+        throw new BadRequestException('El documento no corresponde al titular de la reserva');
+      const total = row.payload.lines.reduce((sum, line) => sum + line.adults + line.children, 0);
+      const attendees = input.asistentes_reales ?? total;
+      if (!Number.isInteger(attendees) || Number(attendees) < 1 || Number(attendees) > total)
+        throw new BadRequestException('Cantidad de asistentes invalida');
+      const receipt = { reserva_id: id, hora_checkin: new Date().toISOString(), asistentes_reales: attendees, guia_codigo: guide, admin_id: adminId };
+      await manager.query('INSERT INTO saga_http_request(request_key,payload_hash,response) VALUES ($1,$2,$3::jsonb)',
+        [`checkin:${id}`, sagaHash({ id, adminId }), JSON.stringify(receipt)]);
+      return receipt;
+    });
   }
 
   async clear(userId: string) {
@@ -255,21 +368,65 @@ export class CartService {
 
   async cancel(userId: string, id: string, authorization: string) {
     const [row] = await this.source.query<ReservationRow[]>(
-      'SELECT state,paid,stock_confirmed,payload FROM saga_cart_reservation WHERE reservation_id=$1 AND user_id=$2',
+      `SELECT state,paid,stock_confirmed,payload,created_at,
+       (SELECT response->>'hora_checkin' FROM saga_http_request WHERE request_key='checkin:'||reservation_id::text) AS checkin_en
+       FROM saga_cart_reservation WHERE reservation_id=$1 AND user_id=$2`,
       [id, userId],
     );
     if (!row) throw new NotFoundException('Reservation not found');
-    if (row.state === 'CANCELLED')
-      return { reservationId: id, state: 'CANCELLED' };
+    if (row.checkin_en || ['CHECKED_IN', 'CONFIRMADO_ASISTIDO', 'COMPLETED'].includes(row.state))
+      throw new ConflictException({
+        title: 'Cancelación No Permitida',
+        detail:
+          'No se puede cancelar una reserva que ya realizó check-in o fue asistida.',
+        status: 409,
+      });
+    if (row.state === 'CANCELLED') return this.reservation(userId, id);
     if (row.state !== 'CONFIRMED')
       throw new ConflictException(
         'Solo se pueden cancelar reservas confirmadas; espere el resultado del pago',
       );
-    const today = new Date().toISOString().slice(0, 10);
-    if (row.payload.lines.some((line) => line.date < today))
-      throw new ConflictException(
-        'La actividad ya ocurrió y no es reembolsable',
-      );
+    const now = Date.now();
+    if (
+      !row.payload.lines.length ||
+      row.payload.lines.some((line) => {
+        const startsAt = Date.parse(`${line.date}T${line.timeSlot}-05:00`);
+        return !Number.isFinite(startsAt) || startsAt - now < 86_400_000;
+      })
+    )
+      throw new ConflictException({
+        title: 'Cancelación Fuera de Plazo',
+        status: 409,
+        detail:
+          'La cancelación y reembolso solo están permitidos con al menos 24 horas de anticipación al horario reservado.',
+      });
+    const code = `REF-ATR-${id}`;
+    const receipt: CancellationProgress = {
+      status: 'CANCELLING',
+      cancel_code: code,
+      reembolso_id: code,
+      monto_reembolsado: 0,
+      refund: {
+        refund_id: code,
+        status: 'PENDING',
+        amount: row.payload.amountCents / 100,
+        currency: row.payload.currency,
+        message: 'Reembolso simulado del 100% pendiente.',
+      },
+      stock_restoration: {
+        status: 'PENDING',
+        restored_spots: 0,
+        message: 'Restitución de cupos pendiente.',
+      },
+      message: 'Cancelación en proceso.',
+    };
+    await this.source.transaction(async manager => {
+      await manager.query('SELECT reservation_id FROM saga_cart_reservation WHERE reservation_id=$1 FOR UPDATE', [id]);
+      const [checkedIn] = await manager.query('SELECT response FROM saga_http_request WHERE request_key=$1', [`checkin:${id}`]);
+      if (checkedIn) throw new ConflictException('No se puede cancelar despues del check-in');
+      await manager.query(`INSERT INTO saga_http_request(request_key,payload_hash,response) VALUES ($1,$2,$3::jsonb)
+        ON CONFLICT (request_key) DO NOTHING`, [`cancel:${id}`, sagaHash({ id, userId }), JSON.stringify(receipt)]);
+    });
     let response: Response;
     try {
       const base = this.config.getOrThrow<string>('REFUND_BASE_URL');
@@ -291,7 +448,7 @@ export class CartService {
     } catch {
       throw new ServiceUnavailableException('Reembolsos no disponible');
     }
-    if (!response.ok && response.status !== 409)
+    if (!response.ok)
       throw new ServiceUnavailableException(
         'No se pudo solicitar el reembolso',
       );
@@ -308,6 +465,46 @@ export class CartService {
         const { reason: _reason, ...original } = event.data;
         if (sagaHash(original) !== sagaHash(row.payload))
           throw new PermanentSagaError('Reservation payload changed');
+      }
+      // Se confirma cada efecto por separado: CANCELLED puede llegar antes de liberar inventario.
+      if (
+        row &&
+        ['pago.reembolsado', 'inventario_liberado'].includes(event.tipo)
+      ) {
+        const [saved] = await manager.query<
+          Array<{ response: CancellationProgress }>
+        >(
+          'SELECT response FROM saga_http_request WHERE request_key=$1 FOR UPDATE',
+          [`cancel:${event.correlationId}`],
+        );
+        if (saved) {
+          const receipt = saved.response;
+          if (event.tipo === 'pago.reembolsado') {
+            receipt.refund.status = 'PROCESSED';
+            receipt.refund.message = 'Reembolso simulado del 100% procesado.';
+            receipt.monto_reembolsado = receipt.refund.amount;
+          } else {
+            receipt.stock_restoration.status = 'RESTORED';
+            receipt.stock_restoration.restored_spots = row.payload.lines.reduce(
+              (sum, line) => sum + line.adults + line.children,
+              0,
+            );
+            receipt.stock_restoration.message =
+              'Cupos reincorporados a la disponibilidad del operador local.';
+          }
+          if (
+            receipt.refund.status === 'PROCESSED' &&
+            receipt.stock_restoration.status === 'RESTORED'
+          ) {
+            receipt.status = 'CANCELLED';
+            receipt.message =
+              'Reserva cancelada exitosamente y cupos restituidos.';
+          }
+          await manager.query(
+            'UPDATE saga_http_request SET response=$2::jsonb WHERE request_key=$1',
+            [`cancel:${event.correlationId}`, JSON.stringify(receipt)],
+          );
+        }
       }
       if (!row || row.state === 'CANCELLED') return;
       if (row.state === 'CONFIRMED' && event.tipo !== 'pago.reembolsado')

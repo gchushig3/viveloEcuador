@@ -150,8 +150,9 @@ export interface ReservationRequest extends SafePayment {
   num_adultos?: number; ninos?: { edad: number }[]; product_type?: ProductType;
   customer_name: string; customer_email?: string;
 }
-export type ReservationStatus = 'PENDIENTE' | 'CONFIRMADA' | 'CANCELADA';
+export type ReservationStatus = 'PENDIENTE' | 'CONFIRMADA' | 'CANCELADA' | 'CHECKED_IN' | 'CONFIRMADO_ASISTIDO' | 'COMPLETED';
 export interface ReservationResponse {
+  checkin_en?: string | null;
   reservation_id: string; status: ReservationStatus; ticket_count: number; num_adultos: number; num_ninos: number;
   total_cupos_ocupados: number; product_type: ProductType; total_price: Price;
   payment?: { status: 'SUCCESS'; metodo_pago: PaymentMethod; monto_pagado: number; transaccion_hash: string; fecha_pago: string };

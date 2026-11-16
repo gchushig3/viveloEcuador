@@ -8,6 +8,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import { DataSource } from 'typeorm';
 import { InventoryAdminService } from './inventory-admin.service.js';
 import { BookingClientsService } from './booking-clients.service.js';
+import {
+  assertCancellable,
+  assertCancellationDeadline,
+  cancellationReceipt,
+} from './cancellation.js';
 
 export interface BookingReservationInput {
   atraccion_id: string;
@@ -83,7 +88,9 @@ export class BookingReservationsService {
           input.hora,
           input.personas,
           input.cliente_nombre,
-          input.cliente_email,
+          // Si Booking encontró al cliente por identificación, conserva el correo
+          // canónico registrado en nuestra base y enlaza la reserva a su UUID.
+          client.email,
           key ?? null,
           hash,
           client.client_id,
@@ -130,13 +137,42 @@ export class BookingReservationsService {
   }
 
   async cancel(id: string) {
+    await this.clients.ensureReservationColumns();
     // La intencion de cancelar sobrevive a una caida entre el RPC y el commit local.
     await this.source.transaction(async (manager) => {
-      const [row] = await manager.query<Array<{ res_estado: string }>>(
-        'SELECT res_estado FROM reserva_atraccion WHERE res_uuid=$1 FOR UPDATE',
+      const [row] = await manager.query<
+        Array<{
+          res_uuid: string;
+          res_estado: string;
+          res_checkin_en: Date | null;
+          date: string;
+          time: string;
+          amount: string | null;
+          currency: string | null;
+        }>
+      >(
+        `SELECT r.res_uuid,r.res_estado,r.res_checkin_en,
+                to_char(r.res_fecha,'YYYY-MM-DD') AS date, to_char(r.res_hora,'HH24:MI:SS') AS time,
+                ((p.payload->'price'->>'adult')::numeric*r.res_personas)::text AS amount,
+                p.payload->'price'->>'currency' AS currency
+           FROM reserva_atraccion r LEFT JOIN booking_attraction_profile p USING(atr_id)
+          WHERE r.res_uuid::text=lower($1) OR r.res_id::text=$1 FOR UPDATE OF r`,
         [id],
       );
       if (!row) throw new NotFoundException('Reserva no encontrada');
+      assertCancellable(row.res_estado, row.res_checkin_en);
+      if (!['CANCELADA', 'CANCELANDO'].includes(row.res_estado))
+        assertCancellationDeadline(row.date, row.time);
+      if (
+        row.amount === null ||
+        !Number.isFinite(Number(row.amount)) ||
+        Number(row.amount) < 0 ||
+        !row.currency
+      )
+        throw new ConflictException(
+          'No hay tarifa disponible para calcular el reembolso simulado',
+        );
+      id = row.res_uuid;
       if (row.res_estado !== 'CANCELADA')
         await manager.query(
           "UPDATE reserva_atraccion SET res_estado='CANCELANDO' WHERE res_uuid=$1",
@@ -145,19 +181,43 @@ export class BookingReservationsService {
     });
     return this.source.transaction(async (manager) => {
       const [row] = await manager.query<
-        Array<{ res_uuid: string; res_estado: string }>
+        Array<{
+          res_uuid: string;
+          res_estado: string;
+          res_checkin_en: Date | null;
+          res_personas: number;
+          amount: string;
+          currency: string;
+        }>
       >(
-        'SELECT res_uuid,res_estado FROM reserva_atraccion WHERE res_uuid=$1 FOR UPDATE',
+        `SELECT r.res_uuid,r.res_estado,r.res_checkin_en,r.res_personas,
+                ((p.payload->'price'->>'adult')::numeric*r.res_personas)::text AS amount,
+                p.payload->'price'->>'currency' AS currency
+           FROM reserva_atraccion r LEFT JOIN booking_attraction_profile p USING(atr_id)
+          WHERE r.res_uuid=$1 FOR UPDATE OF r`,
         [id],
       );
       if (!row) throw new NotFoundException('Reserva no encontrada');
+      assertCancellable(row.res_estado, row.res_checkin_en);
+      const amount = Number(row.amount);
+      if (
+        row.amount === null ||
+        !Number.isFinite(amount) ||
+        amount < 0 ||
+        !row.currency
+      )
+        throw new ConflictException(
+          'No hay tarifa disponible para calcular el reembolso simulado',
+        );
+      if (row.res_estado === 'CANCELADA')
+        return cancellationReceipt(id, row.res_personas, amount, row.currency);
       // Tambien se ejecuta al reintentar: Inventory libera una sola vez.
       await this.inventory.releaseBooking(id);
       await manager.query(
         "UPDATE reserva_atraccion SET res_estado='CANCELADA' WHERE res_uuid=$1",
         [id],
       );
-      return { reserva_id: id, estado: 'CANCELADA' };
+      return cancellationReceipt(id, row.res_personas, amount, row.currency);
     });
   }
 }

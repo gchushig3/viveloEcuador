@@ -449,32 +449,25 @@ export class InventoryService implements OnModuleInit {
           ON CONFLICT(atr_id,hor_hora) DO UPDATE SET hor_hora=EXCLUDED.hor_hora RETURNING hor_id`,
           [input.attractionId, time, input.capacity],
         );
-        for (const date of dates) {
-          const prior = await manager.query(
-            'SELECT 1 FROM disponibilidad WHERE atr_id=$1 AND hor_id=$2 AND dis_fecha=$3',
-            [input.attractionId, schedule.hor_id, date],
-          );
-          if (prior.length) {
-            skipped++;
-            continue;
-          }
-          const [availability] = await manager.query<Array<{ dis_id: string }>>(
-            'INSERT INTO disponibilidad(atr_id,hor_id,dis_fecha,dis_cupo_total) VALUES ($1,$2,$3,$4) RETURNING dis_id',
-            [input.attractionId, schedule.hor_id, date, input.capacity],
-          );
-          await manager.query(
-            'INSERT INTO saga_inventory_slot(service_id,item_id,date,slot_id,time_slot,dis_id) VALUES ($1,$2,$3,$4,$5,$6)',
-            [
-              serviceId,
-              input.itemId,
-              date,
-              `slot-${date.replaceAll('-', '')}-${time.slice(0, 5).replace(':', '')}`,
-              time,
-              availability.dis_id,
-            ],
-          );
-          created++;
-        }
+        // Insertar todas las fechas en una consulta evita cientos de viajes a PostgreSQL.
+        // El bloqueo por atraccion/horario conserva la idempotencia de los reintentos.
+        const [batch] = await manager.query<Array<{ created: number }>>(
+          `WITH added AS (
+            INSERT INTO disponibilidad(atr_id,hor_id,dis_fecha,dis_cupo_total)
+            SELECT $1,$2,day,$4 FROM unnest($3::date[]) AS dates(day)
+            WHERE NOT EXISTS (
+              SELECT 1 FROM disponibilidad d WHERE d.atr_id=$1 AND d.hor_id=$2 AND d.dis_fecha=day
+            ) RETURNING dis_id,dis_fecha
+          ), mapped AS (
+            INSERT INTO saga_inventory_slot(service_id,item_id,date,slot_id,time_slot,dis_id)
+            SELECT $5,$6,dis_fecha,
+              'slot-' || to_char(dis_fecha,'YYYYMMDD') || '-' || replace(left($7::text,5),':',''),
+              $7::time,dis_id FROM added RETURNING dis_id
+          ) SELECT count(*)::int AS created FROM mapped`,
+          [input.attractionId, schedule.hor_id, dates, input.capacity, serviceId, input.itemId, time],
+        );
+        created += batch.created;
+        skipped += dates.length - batch.created;
       }
       return { created, skipped };
     });

@@ -1,0 +1,503 @@
+openapi: 3.0.3
+info:
+  title: MS Cart API
+  version: 1.0.0
+  description: API de carrito y seguimiento de reservas. Las operaciones HTTP requieren el access JWT del usuario.
+servers:
+  - url: /
+tags:
+  - name: Cart
+  - name: Reservations
+  - name: Administration
+paths:
+  /api/v2/cart/items:
+    post:
+      operationId: addCartItem
+      summary: Agregar un artículo al carrito activo
+      description: Valida precio y disponibilidad con Catálogo e Inventario. Un mismo slot no puede agregarse dos veces al carrito.
+      tags: [Cart]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddCartItem'
+      responses:
+        '201':
+          description: Artículo agregado; los reintentos idempotentes devuelven el resultado original.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddedCartItem'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Atracción no disponible.
+        '409':
+          description: Disponibilidad insuficiente, slot duplicado o clave idempotente reutilizada con otro cuerpo.
+        '503':
+          description: Catálogo o Inventario no disponible.
+  /api/v2/cart/checkout:
+    post:
+      operationId: checkoutCart
+      summary: Iniciar checkout del carrito
+      description: Crea una reserva pendiente, cierra el carrito activo y publica el evento de saga. El procesamiento continúa de forma asíncrona.
+      tags: [Cart]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CheckoutRequest'
+      responses:
+        '202':
+          description: Checkout aceptado y reserva creada en estado PENDING.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CheckoutAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Payload de prueba deshabilitado.
+        '404':
+          description: No existe un carrito activo.
+        '409':
+          description: Clave idempotente reutilizada con otro cuerpo.
+  /api/v2/cart:
+    delete:
+      operationId: clearCart
+      summary: Vaciar el carrito activo
+      tags: [Cart]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Carrito vaciado (operación idempotente).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [cleared]
+                properties:
+                  cleared:
+                    type: boolean
+                    enum: [true]
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/v2/cart/reservations:
+    get:
+      operationId: listReservations
+      summary: Listar las reservas del usuario
+      description: Devuelve como máximo las 100 reservas más recientes del usuario autenticado.
+      tags: [Reservations]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Reservas del usuario.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ReservationRecord'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /api/v2/cart/reservations/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ReservationId'
+    get:
+      operationId: getReservation
+      summary: Obtener una reserva propia
+      tags: [Reservations]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Reserva solicitada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReservationRecord'
+        '400':
+          description: El identificador no es un UUID válido.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Reserva inexistente o perteneciente a otro usuario.
+  /api/v2/cart/reservations/{id}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/ReservationId'
+    post:
+      operationId: cancelReservation
+      summary: Solicitar la cancelación de una reserva
+      description: >-
+        Solo se admite para reservas confirmadas y actividades futuras. Solicita
+        el reembolso al servicio correspondiente; un evento de saga actualizará
+        el estado posteriormente. Una reserva ya cancelada devuelve CANCELLED.
+      tags: [Reservations]
+      security:
+        - bearerAuth: []
+      responses:
+        '202':
+          description: Solicitud aceptada o reserva ya cancelada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CancelAccepted'
+        '400':
+          description: El identificador no es un UUID válido.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Reserva inexistente o perteneciente a otro usuario.
+        '409':
+          description: La reserva no puede cancelarse en su estado actual o la actividad ya ocurrió.
+        '503':
+          description: Servicio de reembolsos no disponible o solicitud fallida.
+  /api/v2/cart/admin/reservations:
+    get:
+      operationId: adminListReservations
+      summary: Listar las reservas recientes (administración)
+      description: Requiere el rol ADMIN. Devuelve como máximo 100 registros.
+      tags: [Administration]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Reservas recientes de todos los usuarios.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AdminReservationRecord'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+  /api/v2/cart/admin/customers:
+    get:
+      operationId: adminListPaidCustomerUserIds
+      summary: List account IDs with a paid reservation
+      description: ADMIN only. Returns each distinct account ID with at least one reservation whose payment succeeded, including reservations later cancelled.
+      tags: [Administration]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Account IDs that have completed a payment.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [userId]
+                  properties:
+                    userId:
+                      type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+  /api/v2/cart/admin/summary:
+    get:
+      operationId: adminCartSummary
+      summary: Complete web reservation totals
+      description: ADMIN only. Aggregates the full reservation table, independently of the 100-row recent list. Dates use America/Guayaquil.
+      tags: [Administration]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: reservas counters for total, confirmadas, canceladas, hoy, proximas, ultimas_24h and personas_proximas.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: ADMIN required.
+  /api/v2/cart/admin/reservations/{id}/checkin:
+    post:
+      operationId: adminCartCheckin
+      summary: Confirm web reservation attendance
+      description: ADMIN only. Verifies the customer document using ms-cliente. Persists one receipt per reservation, excludes concurrent cancellation and returns the existing receipt on retry.
+      tags: [Administration]
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ReservationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [documento_identidad, guia_codigo]
+              properties:
+                documento_identidad:
+                  type: string
+                  pattern: '^[0-9]{10}([0-9]{3})?$'
+                guia_codigo:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                asistentes_reales:
+                  type: integer
+                  minimum: 1
+      responses:
+        '201':
+          description: Attendance receipt with reserva_id, hora_checkin, asistentes_reales, guia_codigo and admin_id.
+        '400':
+          description: Invalid fields or document does not match the reservation customer.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: ADMIN required.
+        '404':
+          description: Reservation not found.
+        '409':
+          description: Reservation not confirmed/paid or cancellation in progress.
+        '503':
+          description: Customer verification unavailable.
+  /api/v2/cart/admin/users/{userId}/reservations:
+    get:
+      operationId: adminListUserReservations
+      summary: Listar reservas de un usuario (administración)
+      description: Requiere el rol ADMIN; devuelve como máximo 100 registros.
+      tags: [Administration]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/BigId'
+      responses:
+        '200':
+          description: Reservas del usuario indicado.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UserReservationRecord'
+        '400':
+          description: userId no es un BIGINT positivo válido.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: UUID requerido para evitar duplicar operaciones ante reintentos. Reutilizarlo con otro cuerpo genera conflicto.
+      schema:
+        type: string
+        format: uuid
+    ReservationId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: Cuerpo inválido, clave de idempotencia faltante o parámetros inválidos.
+    Unauthorized:
+      description: Token ausente, inválido o sesión no válida.
+  schemas:
+    BigId:
+      type: string
+      pattern: '^[1-9][0-9]{0,18}$'
+      description: Identificador BIGINT positivo representado como texto.
+    AddCartItem:
+      type: object
+      additionalProperties: false
+      required: [attractionId, date, timeSlot, slotId, adults, children]
+      properties:
+        attractionId:
+          $ref: '#/components/schemas/BigId'
+        date:
+          type: string
+          format: date
+        timeSlot:
+          type: string
+          minLength: 1
+          maxLength: 40
+        slotId:
+          type: string
+          pattern: '^slot-[0-9]{8}-[0-9]{4}$'
+        adults:
+          type: integer
+          minimum: 1
+          maximum: 100
+        children:
+          type: integer
+          minimum: 0
+          maximum: 100
+    CartLine:
+      allOf:
+        - $ref: '#/components/schemas/AddCartItem'
+        - type: object
+          required: [itemId, serviceId, amountCents]
+          properties:
+            itemId:
+              type: string
+            serviceId:
+              type: string
+            amountCents:
+              type: integer
+              minimum: 1
+              maximum: 999999999999
+    AddedCartItem:
+      type: object
+      required: [cartId, itemId, line]
+      properties:
+        cartId:
+          type: string
+        itemId:
+          type: string
+        line:
+          $ref: '#/components/schemas/CartLine'
+    CheckoutRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        testMode:
+          type: string
+          enum: [test_success, test_fail]
+          description: Solo aceptado cuando PAYMENT_ALLOW_TEST_PAYLOADS=true y NODE_ENV no es production.
+    CheckoutAccepted:
+      type: object
+      required: [reservationId, correlationId, expiresAt, state, amountCents, currency]
+      properties:
+        reservationId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+          format: uuid
+        expiresAt:
+          type: string
+          format: date-time
+        state:
+          type: string
+          enum: [PENDING]
+        amountCents:
+          type: integer
+          minimum: 1
+          maximum: 999999999999
+        currency:
+          type: string
+          enum: [USD]
+    ReservationLine:
+      type: object
+      required: [attractionId, itemId, serviceId, date, timeSlot, slotId, adults, children, amountCents]
+      properties:
+        attractionId:
+          $ref: '#/components/schemas/BigId'
+        itemId:
+          type: string
+        serviceId:
+          type: string
+        date:
+          type: string
+          format: date
+        timeSlot:
+          type: string
+        slotId:
+          type: string
+        adults:
+          type: integer
+        children:
+          type: integer
+        amountCents:
+          type: integer
+    ReservationPayload:
+      type: object
+      required: [reservationId, userId, expiresAt, currency, amountCents, lines]
+      properties:
+        reservationId:
+          type: string
+          format: uuid
+        userId:
+          $ref: '#/components/schemas/BigId'
+        expiresAt:
+          type: string
+          format: date-time
+        currency:
+          type: string
+          enum: [USD]
+        amountCents:
+          type: integer
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/ReservationLine'
+        testMode:
+          type: string
+          enum: [test_success, test_fail]
+        reason:
+          type: string
+    ReservationRecord:
+      type: object
+      required: [reservationId, state, payload]
+      properties:
+        reservationId:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum: [PENDING, CONFIRMED, CANCELLED]
+        paid:
+          type: boolean
+        stockConfirmed:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+        payload:
+          $ref: '#/components/schemas/ReservationPayload'
+    AdminReservationRecord:
+      allOf:
+        - $ref: '#/components/schemas/ReservationRecord'
+        - type: object
+          required: [userId]
+          properties:
+            userId:
+              $ref: '#/components/schemas/BigId'
+    UserReservationRecord:
+      $ref: '#/components/schemas/ReservationRecord'
+    CancelAccepted:
+      type: object
+      required: [reservationId, state]
+      properties:
+        reservationId:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum: [CANCELLED, REFUND_REQUESTED]

@@ -3,20 +3,23 @@
 Microservicio de soporte del Sistema de Atracciones (Descubre EC).
 
 - **Responsabilidad:** Gestionar los mensajes de contacto / soporte: tabla `mensaje_contacto`.
-- **Contrato:** REST (`/api/v1/...`), prefijo global `api/v1`, Swagger UI en `/api/docs`.
+- **Contrato:** REST con prefijo global `/api/v2`; especificacion OpenAPI en [`contract/ms_support-openapi-v1.yaml`](./contract/ms_support-openapi-v1.yaml).
 - **Base de datos:** `ms_support` (database-per-service).
-- **Dependencias externas:** Ninguna (no consume otros microservicios).
+- **Dependencias externas:** MS Identity para autenticar y autorizar las rutas privadas.
 
 ## Endpoints
 
+Crear mensajes requiere autenticacion. Listarlos, consultarlos, marcarlos como
+leidos o eliminarlos requiere el rol `ADMIN`. `GET /api/v2/health` es publico.
+
 | Metodo | Ruta | Descripcion | Respuesta |
 |---|---|---|---|
-| GET | `/api/v1/mensajes` | Listar todos los mensajes de contacto | 200 |
-| GET | `/api/v1/mensajes/:id` | Obtener un mensaje por su identificador | 200 / 404 |
-| POST | `/api/v1/mensajes` | Crear un mensaje de contacto | 201 + `Location` |
-| PUT | `/api/v1/mensajes/:id` | Reemplazar un mensaje | 204 |
-| PATCH | `/api/v1/mensajes/:id` | Actualizar parcialmente un mensaje | 200 / 404 |
-| DELETE | `/api/v1/mensajes/:id` | Eliminar un mensaje | 204 |
+| POST | `/api/v2/support/messages` | Crear un mensaje de contacto | 201 + `Location` |
+| GET | `/api/v2/support/messages` | Listar mensajes; filtro opcional `leido=true\|false` (ADMIN) | 200 |
+| GET | `/api/v2/support/messages/:id` | Obtener un mensaje (ADMIN) | 200 / 404 |
+| PATCH | `/api/v2/support/messages/:id` | Cambiar `men_leido` (ADMIN) | 200 / 404 |
+| DELETE | `/api/v2/support/messages/:id` | Eliminar un mensaje (ADMIN) | 204 / 404 |
+| GET | `/api/v2/health` | Consultar la salud del servicio | 200 |
 
 ## Base de datos
 
@@ -36,7 +39,7 @@ psql -U postgres -d ms_support -f init-support.sql
 npm run start:dev
 ```
 
-Swagger UI: <http://localhost:3000/api/docs>
+El puerto local por defecto es `3000`.
 
 ## Tests
 

@@ -10,6 +10,7 @@ import { InventoryController } from './inventory.controller.js';
 import { InventoryService } from './inventory.service.js';
 import { InventorySagaService } from './inventory-saga.service.js';
 import { BookingStockSyncService } from './booking-stock-sync.service.js';
+import { HealthController } from './health.controller.js';
 
 @Module({
   imports: [
@@ -17,7 +18,7 @@ import { BookingStockSyncService } from './booking-stock-sync.service.js';
     NeonDatabaseModule.forRootAsync(),
     SagaRuntimeModule.forService('ms_inventory'),
   ],
-  controllers: [InventoryController],
+  controllers: [InventoryController, HealthController],
   providers: [
     InventoryService,
     InventorySagaService,

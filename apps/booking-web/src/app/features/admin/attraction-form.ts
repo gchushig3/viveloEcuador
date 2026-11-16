@@ -78,7 +78,7 @@ export class AttractionForm {
       const item = this.attraction();
       if (item) {
         this.loading.set(true);
-        this.api.obtenerAtraccion(item.id).pipe(takeUntilDestroyed(this.destroy)).subscribe({
+        this.api.obtenerAtraccionAdmin(item.id).pipe(takeUntilDestroyed(this.destroy)).subscribe({
           next: detail => {
             this.fillForm(detail);
             this.loading.set(false);

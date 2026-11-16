@@ -15,10 +15,52 @@ export interface AdminReservation {
   personas: number;
   cliente_nombre: string;
   cliente_email: string;
+  client_id?: string | null;
   creada_en: string;
   checkin_en?: string | null;
   asistentes_reales?: number | null;
   booking_notificado?: boolean;
+}
+
+export interface AdminClient {
+  client_id: string;
+  nombre: string;
+  email: string;
+  identificacion: string | null;
+  telefono: string | null;
+  origenes: string[];
+  usuario_id?: string | null;
+  creado_en: string | null;
+}
+
+export interface AdminClientReservation {
+  reserva_id: string;
+  estado: string;
+  atraccion: string;
+  fecha: string;
+  hora: string;
+  personas: number;
+  creada_en: string;
+}
+
+export interface AdminClientDetail extends AdminClient {
+  reservas: AdminClientReservation[];
+}
+
+export interface AdminLocalReservation {
+  reservationId: string;
+  state: string;
+  paid: boolean;
+  createdAt: string;
+  payload: { lines?: Array<{ itemId?: string; date?: string; timeSlot?: string; adults?: number; children?: number }> };
+}
+
+export interface AdminClientsPage {
+  items: AdminClient[];
+  total: number;
+  page: number;
+  limit: number;
+  total_pages: number;
 }
 
 export interface AdminCheckinResult {

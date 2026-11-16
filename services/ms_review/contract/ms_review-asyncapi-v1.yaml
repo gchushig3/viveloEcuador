@@ -1,0 +1,111 @@
+asyncapi: 2.6.0
+info:
+  title: MS Review Events
+  version: 1.0.0
+  description: |
+    MS Review publica RESENA_PUBLICADA desde el outbox transaccional.
+    AMQP_CATALOG_QUEUE configura la cola destino (por defecto catalog.reviews).
+    Si se configuran AMQP_AUDIT_QUEUE o AMQP_EXCHANGE, el publicador tambien
+    envia una copia a esos destinos. OUTBOX_POLL_MS configura el intervalo de
+    consulta (500 ms por defecto); los fallos se reintentan tras 5 segundos.
+defaultContentType: application/json
+servers:
+  local:
+    url: amqp://localhost:5672
+    protocol: amqp
+    description: Broker AMQP; la URL y credenciales se configuran con AMQP_URL.
+channels:
+  '{queueName}':
+    description: Cola durable de destino configurada en AMQP_CATALOG_QUEUE.
+    parameters:
+      queueName:
+        description: Nombre de cola; por defecto catalog.reviews.
+        schema:
+          type: string
+          default: catalog.reviews
+    bindings:
+      amqp:
+        is: queue
+        queue:
+          durable: true
+    publish:
+      operationId: publicarResenaPublicada
+      summary: Publicar el resumen versionado de una atraccion
+      message:
+        $ref: '#/components/messages/ResenaPublicadaEnvelope'
+components:
+  messages:
+    ResenaPublicadaEnvelope:
+      name: ResenaPublicadaEnvelope
+      title: Sobre NestJS del evento RESENA_PUBLICADA
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ResenaPublicadaEnvelope'
+  schemas:
+    ResenaPublicadaEnvelope:
+      type: object
+      additionalProperties: false
+      required: [pattern, data]
+      properties:
+        pattern:
+          type: string
+          const: RESENA_PUBLICADA
+        data:
+          $ref: '#/components/schemas/ResenaPublicada'
+    ResenaPublicada:
+      type: object
+      additionalProperties: false
+      required: [eventoId, tipo, fechaISO, origen, correlationId, data]
+      properties:
+        eventoId:
+          type: string
+          format: uuid
+          description: Identificador estable de la fila del outbox.
+        tipo:
+          type: string
+          const: RESENA_PUBLICADA
+        fechaISO:
+          type: string
+          format: date-time
+        origen:
+          type: string
+          const: ms_review
+        correlationId:
+          $ref: '#/components/schemas/BigId'
+        data:
+          type: object
+          additionalProperties: false
+          required:
+            - atr_id
+            - ren_id
+            - ren_puntuacion
+            - ren_visible
+            - promedio
+            - total
+            - version
+          properties:
+            atr_id:
+              $ref: '#/components/schemas/BigId'
+            ren_id:
+              $ref: '#/components/schemas/BigId'
+            ren_puntuacion:
+              type: integer
+              minimum: 1
+              maximum: 5
+            ren_visible:
+              type: boolean
+            promedio:
+              type: number
+              minimum: 0
+              maximum: 5
+              multipleOf: 0.01
+            total:
+              type: integer
+              minimum: 0
+            version:
+              type: integer
+              minimum: 1
+              description: Secuencia monotona por atraccion asignada por el outbox.
+    BigId:
+      type: string
+      pattern: '^[1-9][0-9]{0,18}$'

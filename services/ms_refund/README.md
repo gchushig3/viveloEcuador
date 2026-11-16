@@ -35,6 +35,11 @@ Para una base ya creada, aplicar `database/refund-migration.sql`.
 Configurar `SAGA_EXCHANGE` y `AMQP_AUDIT_QUEUE`. El rechazo de una publicacion
 se informa como 503; reintentar con el mismo `correlationId`.
 
+## Contratos
+
+- [OpenAPI REST](./contract/ms_refund-openapi-v1.yaml)
+- [AsyncAPI Saga (AMQP)](./contract/ms_refund-asyncapi-v1.yaml)
+
 ## Project setup
 
 ```bash

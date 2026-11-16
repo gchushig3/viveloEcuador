@@ -15,6 +15,8 @@ import { AttractionsController } from './attractions.controller.js';
 import {
   BookingContractController,
   BookingRootHealthController,
+  BookingCancellationAliasController,
+  BookingCancellationController,
 } from './booking-contract.controller.js';
 import { AdminReservationsController } from './admin-reservations.controller.js';
 import {
@@ -47,6 +49,8 @@ import { BookingProfileEntity } from '../../booking/booking-profile.entity.js';
     CheckinController,
     BookingContractController,
     BookingRootHealthController,
+    BookingCancellationAliasController,
+    BookingCancellationController,
     AdminReservationsController,
     AdminLookupsController,
     AdminListController,

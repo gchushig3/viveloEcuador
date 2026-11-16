@@ -1,0 +1,740 @@
+openapi: 3.0.3
+info:
+  title: MS Location API
+  version: 1.0.0
+  description: API geográfica de regiones, provincias, ciudades y ubicaciones de atracciones.
+servers:
+  - url: /
+tags:
+  - name: Regiones
+  - name: Provincias
+  - name: Ciudades
+  - name: Ubicaciones de atracciones
+  - name: Health
+paths:
+  /api/v2/regiones:
+    get:
+      operationId: listRegions
+      summary: Listar regiones
+      tags: [Regiones]
+      security: []
+      responses:
+        '200':
+          description: Regiones ordenadas por identificador ascendente.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Region'
+    post:
+      operationId: createRegion
+      summary: Crear región
+      tags: [Regiones]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegionInput'
+      responses:
+        '201':
+          description: Región creada.
+          headers:
+            Location:
+              description: La implementación actual devuelve una ruta con prefijo /api/v1.
+              schema:
+                type: string
+                example: /api/v1/regiones/1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Region'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+  /api/v2/regiones/{id}:
+    parameters:
+      - $ref: '#/components/parameters/SmallId'
+    get:
+      operationId: getRegion
+      summary: Obtener región
+      tags: [Regiones]
+      security: []
+      responses:
+        '200':
+          description: Región solicitada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Region'
+        '400':
+          description: El identificador no es un entero válido.
+        '404':
+          description: Región no encontrada.
+    put:
+      operationId: replaceRegion
+      summary: Reemplazar región
+      tags: [Regiones]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegionInput'
+      responses:
+        '204':
+          description: Región reemplazada.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+        '404':
+          description: Región no encontrada.
+    patch:
+      operationId: updateRegion
+      summary: Actualizar parcialmente región
+      tags: [Regiones]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegionUpdate'
+      responses:
+        '200':
+          description: Región actualizada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Region'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+        '404':
+          description: Región no encontrada.
+    delete:
+      operationId: deleteRegion
+      summary: Eliminar región
+      tags: [Regiones]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Región eliminada.
+        '400':
+          description: El identificador no es un entero válido.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+        '404':
+          description: Región no encontrada.
+  /api/v2/provincias:
+    get:
+      operationId: listProvinces
+      summary: Listar provincias
+      tags: [Provincias]
+      security: []
+      parameters:
+        - name: reg_id
+          in: query
+          required: false
+          description: Filtrar por identificador de región.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Provincias ordenadas por identificador ascendente.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Province'
+    post:
+      operationId: createProvince
+      summary: Crear provincia
+      tags: [Provincias]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProvinceInput'
+      responses:
+        '201':
+          description: Provincia creada.
+          headers:
+            Location:
+              description: La implementación actual devuelve una ruta con prefijo /api/v1.
+              schema:
+                type: string
+                example: /api/v1/provincias/1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Province'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+  /api/v2/provincias/{id}:
+    parameters:
+      - $ref: '#/components/parameters/SmallId'
+    get:
+      operationId: getProvince
+      summary: Obtener provincia
+      tags: [Provincias]
+      security: []
+      responses:
+        '200':
+          description: Provincia solicitada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Province'
+        '400':
+          description: El identificador no es un entero válido.
+        '404':
+          description: Provincia no encontrada.
+    put:
+      operationId: replaceProvince
+      summary: Reemplazar provincia
+      tags: [Provincias]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProvinceInput'
+      responses:
+        '204':
+          description: Provincia reemplazada.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+        '404':
+          description: Provincia no encontrada.
+    patch:
+      operationId: updateProvince
+      summary: Actualizar parcialmente provincia
+      tags: [Provincias]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProvinceUpdate'
+      responses:
+        '200':
+          description: Provincia actualizada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Province'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+        '404':
+          description: Provincia no encontrada.
+    delete:
+      operationId: deleteProvince
+      summary: Eliminar provincia
+      tags: [Provincias]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Provincia eliminada.
+        '400':
+          description: El identificador no es un entero válido.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+        '404':
+          description: Provincia no encontrada.
+  /api/v2/ciudades:
+    get:
+      operationId: listCities
+      summary: Listar ciudades
+      tags: [Ciudades]
+      security: []
+      parameters:
+        - name: prov_id
+          in: query
+          required: false
+          description: Filtrar por identificador de provincia.
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Ciudades ordenadas por identificador ascendente.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/City'
+    post:
+      operationId: createCity
+      summary: Crear ciudad
+      tags: [Ciudades]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CityInput'
+      responses:
+        '201':
+          description: Ciudad creada.
+          headers:
+            Location:
+              description: La implementación actual devuelve una ruta con prefijo /api/v1.
+              schema:
+                type: string
+                example: /api/v1/ciudades/1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/City'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+  /api/v2/ciudades/{id}:
+    parameters:
+      - $ref: '#/components/parameters/SmallId'
+    get:
+      operationId: getCity
+      summary: Obtener ciudad
+      tags: [Ciudades]
+      security: []
+      responses:
+        '200':
+          description: Ciudad solicitada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/City'
+        '400':
+          description: El identificador no es un entero válido.
+        '404':
+          description: Ciudad no encontrada.
+    put:
+      operationId: replaceCity
+      summary: Reemplazar ciudad
+      tags: [Ciudades]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CityInput'
+      responses:
+        '204':
+          description: Ciudad reemplazada.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+        '404':
+          description: Ciudad no encontrada.
+    patch:
+      operationId: updateCity
+      summary: Actualizar parcialmente ciudad
+      tags: [Ciudades]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CityUpdate'
+      responses:
+        '200':
+          description: Ciudad actualizada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/City'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+        '404':
+          description: Ciudad no encontrada.
+    delete:
+      operationId: deleteCity
+      summary: Eliminar ciudad
+      tags: [Ciudades]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Ciudad eliminada.
+        '400':
+          description: El identificador no es un entero válido.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+        '404':
+          description: Ciudad no encontrada.
+  /api/v2/locations/attractions/{atrId}:
+    parameters:
+      - name: atrId
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/BigId'
+    get:
+      operationId: getAttractionLocation
+      summary: Consultar ubicación geográfica de una atracción
+      description: Devuelve coordenadas y nombres de ciudad, provincia y región. La ubicación solo se devuelve si la ciudad y provincia están activas.
+      tags: [Ubicaciones de atracciones]
+      security: []
+      responses:
+        '200':
+          description: Ubicación encontrada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttractionLocationDetails'
+        '400':
+          description: ID de atracción inválido.
+        '404':
+          description: Ubicación no encontrada.
+    put:
+      operationId: upsertAttractionLocation
+      summary: Crear o actualizar ubicación de atracción
+      description: Requiere rol ADMIN. La ciudad debe existir y estar activa.
+      tags: [Ubicaciones de atracciones]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AttractionLocationInput'
+      responses:
+        '200':
+          description: Ubicación creada o actualizada.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttractionLocation'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+        '404':
+          description: Ciudad no encontrada o inactiva.
+  /api/v2/health:
+    get:
+      operationId: checkLocationHealth
+      summary: Consultar estado del servicio
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: Servicio saludable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheck'
+        '503':
+          description: Servicio no saludable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheck'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    SmallId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 32767
+  responses:
+    BadRequest:
+      description: Cuerpo o parámetro inválido.
+    Unauthorized:
+      description: Token ausente, inválido o sesión no válida.
+  schemas:
+    BigId:
+      type: string
+      pattern: '^[1-9][0-9]{0,18}$'
+      description: Identificador BIGINT positivo representado como texto.
+    RegionInput:
+      type: object
+      additionalProperties: false
+      required: [reg_nombre, reg_codigo]
+      properties:
+        reg_nombre:
+          type: string
+          minLength: 1
+          maxLength: 30
+        reg_codigo:
+          type: string
+          pattern: '^[A-Z]{2}$'
+    RegionUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        reg_nombre:
+          type: string
+          minLength: 1
+          maxLength: 30
+        reg_codigo:
+          type: string
+          pattern: '^[A-Z]{2}$'
+    Region:
+      type: object
+      required: [reg_id, reg_nombre, reg_codigo]
+      properties:
+        reg_id:
+          type: integer
+          minimum: 1
+          maximum: 32767
+        reg_nombre:
+          type: string
+        reg_codigo:
+          type: string
+          pattern: '^[A-Z]{2}$'
+    ProvinceInput:
+      type: object
+      additionalProperties: false
+      required: [reg_id, prov_nombre, prov_codigo]
+      properties:
+        reg_id:
+          type: integer
+          minimum: 1
+          maximum: 32767
+        prov_nombre:
+          type: string
+          minLength: 1
+          maxLength: 60
+        prov_codigo:
+          type: string
+          pattern: '^[0-9]{2}$'
+    ProvinceUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        reg_id:
+          type: integer
+          minimum: 1
+          maximum: 32767
+        prov_nombre:
+          type: string
+          minLength: 1
+          maxLength: 60
+        prov_codigo:
+          type: string
+          pattern: '^[0-9]{2}$'
+    Province:
+      type: object
+      required: [prov_id, prov_nombre, prov_codigo, reg_id, prov_activa]
+      properties:
+        prov_id:
+          type: integer
+          minimum: 1
+          maximum: 32767
+        prov_nombre:
+          type: string
+        prov_codigo:
+          type: string
+          pattern: '^[0-9]{2}$'
+        reg_id:
+          type: integer
+        prov_activa:
+          type: boolean
+    CityInput:
+      type: object
+      additionalProperties: false
+      required: [prov_id, ciu_nombre, ciu_codigo]
+      properties:
+        prov_id:
+          type: integer
+          minimum: 1
+          maximum: 32767
+        ciu_nombre:
+          type: string
+          minLength: 1
+          maxLength: 80
+        ciu_codigo:
+          type: string
+          pattern: '^[0-9]{6}$'
+        ciu_descripcion:
+          type: string
+          maxLength: 500
+        ciu_imagen:
+          type: string
+          maxLength: 500
+    CityUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        prov_id:
+          type: integer
+          minimum: 1
+          maximum: 32767
+        ciu_nombre:
+          type: string
+          minLength: 1
+          maxLength: 80
+        ciu_codigo:
+          type: string
+          pattern: '^[0-9]{6}$'
+        ciu_descripcion:
+          type: string
+          maxLength: 500
+        ciu_imagen:
+          type: string
+          maxLength: 500
+    City:
+      type: object
+      required: [ciu_id, ciu_nombre, ciu_codigo, prov_id, ciu_activa, ciu_descripcion, ciu_imagen]
+      properties:
+        ciu_id:
+          type: integer
+          minimum: 1
+          maximum: 32767
+        ciu_nombre:
+          type: string
+        ciu_codigo:
+          type: string
+          pattern: '^[0-9]{6}$'
+        prov_id:
+          type: integer
+        ciu_activa:
+          type: boolean
+        ciu_descripcion:
+          type: string
+          nullable: true
+        ciu_imagen:
+          type: string
+          nullable: true
+    AttractionLocationInput:
+      type: object
+      additionalProperties: false
+      required: [ciu_id, geo_latitud, geo_longitud]
+      properties:
+        ciu_id:
+          type: integer
+          minimum: 1
+          maximum: 32767
+        geo_latitud:
+          type: number
+          minimum: -90
+          maximum: 90
+        geo_longitud:
+          type: number
+          minimum: -180
+          maximum: 180
+        geo_direccion:
+          type: string
+          maxLength: 300
+    AttractionLocation:
+      type: object
+      required: [atr_id, ciu_id, geo_latitud, geo_longitud, geo_direccion]
+      properties:
+        atr_id:
+          $ref: '#/components/schemas/BigId'
+        ciu_id:
+          type: integer
+        geo_latitud:
+          type: string
+          description: NUMERIC(9,6) serializado como texto.
+        geo_longitud:
+          type: string
+          description: NUMERIC(9,6) serializado como texto.
+        geo_direccion:
+          type: string
+          nullable: true
+    AttractionLocationDetails:
+      allOf:
+        - $ref: '#/components/schemas/AttractionLocation'
+        - type: object
+          required: [ciu_nombre, prov_nombre, reg_nombre]
+          properties:
+            ciu_nombre:
+              type: string
+            prov_nombre:
+              type: string
+            reg_nombre:
+              type: string
+    HealthCheck:
+      type: object
+      required: [status, info, error, details]
+      properties:
+        status:
+          type: string
+          enum: [ok, error]
+        info:
+          type: object
+          additionalProperties: true
+          nullable: true
+        error:
+          type: object
+          additionalProperties: true
+          nullable: true
+        details:
+          type: object
+          additionalProperties: true

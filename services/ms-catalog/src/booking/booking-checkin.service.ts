@@ -84,8 +84,7 @@ export class BookingCheckinService {
                 r.res_cliente_nombre, r.res_cliente_email, r.res_cliente_uuid::text AS res_cliente_uuid,
                 r.res_checkin_en, r.res_checkin_asistentes, r.res_checkin_admin,
                 r.res_checkin_observaciones, r.res_checkin_notificado,
-                (SELECT c.cli_identificacion FROM cliente_atraccion c
-                  WHERE c.cli_uuid = r.res_cliente_uuid) AS identificacion,
+                NULL::varchar AS identificacion,
                 a.atr_nombre, to_char(r.res_fecha,'YYYY-MM-DD') AS fecha,
                 to_char(r.res_hora,'HH24:MI') AS hora
            FROM reserva_atraccion r JOIN atraccion a USING (atr_id)
@@ -111,7 +110,7 @@ export class BookingCheckinService {
       const asistentes = input.asistentes_reales ?? current.res_personas;
       if (asistentes > current.res_personas)
         throw new BadRequestException(
-          'asistentes_reales excede las personas reservadas',
+          'asistentes_reales excede las personas reservadas. Compra los boletos adicionales como una nueva reserva independiente, sujeta a cupos del turno.',
         );
       const admin = input.admin_id ?? input.guia_codigo ?? DEFAULT_ADMIN;
       const notes = input.observaciones ?? DEFAULT_NOTES;

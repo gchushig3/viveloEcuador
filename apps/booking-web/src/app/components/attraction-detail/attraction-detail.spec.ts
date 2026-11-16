@@ -65,6 +65,56 @@ describe('Attraction detail', () => {
     http.expectNone(request => request.url.includes('/paquetes') || request.url.includes('/availability'));
   });
 
+  it('refreshes live stock without resetting the form and stops on destruction', async () => {
+    vi.useFakeTimers();
+    try {
+      component['date'].set(new Date(Date.now() + 86400000).toISOString().slice(0, 10));
+      http.expectOne(catalog + '/atracciones/' + detail.id).flush(detail);
+      fixture.detectChanges();
+      TestBed.tick();
+      await vi.advanceTimersByTimeAsync(0);
+      const stockUrl = catalog + '/atracciones/' + detail.id + '/disponibilidad';
+      http.expectOne(r => r.url === stockUrl).flush({ horarios: [
+        { hora: '10:00', available_spots: 5, status: 'DISPONIBLE', disponible: true },
+      ] });
+      fixture.detectChanges();
+      component['adults'].set(3);
+      const form = fixture.nativeElement.querySelector('form');
+      const date = component['date']();
+      await vi.advanceTimersByTimeAsync(3500);
+      expect(component['loading']()).toBe(false);
+      expect(fixture.nativeElement.querySelector('form')).toBe(form);
+      http.expectOne(r => r.url === stockUrl).flush({ horarios: [
+        { hora: '10:00', available_spots: 0, status: 'AGOTADO', disponible: false },
+      ] });
+      fixture.detectChanges();
+      expect(component['adults']()).toBe(3);
+      expect(component['date']()).toBe(date);
+      expect(component['time']()).toBe('10:00');
+      expect(fixture.nativeElement.textContent).toContain('AGOTADO');
+      expect(fixture.nativeElement.querySelector('button[type=submit]').disabled).toBe(true);
+      await vi.advanceTimersByTimeAsync(3500);
+      http.expectOne(r => r.url === stockUrl).flush({ horarios: [
+        { hora: '10:00', available_spots: 8, status: 'DISPONIBLE', disponible: true },
+      ] });
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('button[type=submit]').disabled).toBe(false);
+      fixture.destroy();
+      await vi.advanceTimersByTimeAsync(7000);
+      http.expectNone(r => r.url === stockUrl);
+    } finally { vi.useRealTimers(); }
+  });
+
+  it('blocks past turns and explains invalid dates before navigation', () => {
+    http.expectOne(catalog + '/atracciones/' + detail.id).flush(detail);
+    component['now'].set(Date.parse(`${component['date']()}T11:00:00-05:00`));
+    expect(component['futureTurn']('10:00')).toBe(false);
+    expect(component['futureTurn']('12:00')).toBe(true);
+    component['date'].set('2000-01-01');
+    expect(component['dateError']()).toBeTruthy();
+    expect(component['canReserve']()).toBe(false);
+  });
+
   it('renders not-found responses distinctly', () => {
     http.expectOne(catalog + '/atracciones/' + detail.id)
       .flush({ message: 'Attraction missing' }, { status: 404, statusText: 'Not Found' });

@@ -1,3 +1,4 @@
+import { switchMap } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule, ValidationErrors, Validators } from '@angular/forms';
@@ -164,15 +165,24 @@ export class App {
     this.observability.track('auth', 'registration_attempt');
     this.errorLogin.set('');
     this.authMessage.set('');
-    this.authService.register(this.registerForm.getRawValue()).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: ({ user, verification_email_sent }) => {
-        this.loginEnviando.set(false);
-        this.loginForm.reset({ email: user.email, password: '' });
+    const credentials = this.registerForm.getRawValue();
+    this.authService.register(credentials).pipe(
+      switchMap(() => {
+        // Registration has succeeded even if the subsequent login needs a retry.
+        this.loginForm.reset({ email: credentials.email, password: '' });
         this.modoRegistro.set(false);
-        this.authMessage.set(verification_email_sent
-          ? 'Cuenta creada. Revisa tu correo para completar la verificación. Ya puedes iniciar sesión.'
-          : 'Cuenta creada, pero no se pudo enviar el correo de verificación. Ya puedes iniciar sesión; solicita un reenvío al equipo de soporte.');
-        this.toastService.mostrar('info', 'Cuenta creada. Revisa el estado de verificación de tu correo.');
+        this.registerForm.controls.password.reset();
+        this.authMessage.set('Cuenta creada. Inicia sesión para continuar.');
+        return this.authService.login({ email: credentials.email, password: credentials.password });
+      }),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe({
+      next: () => {
+        this.loginEnviando.set(false);
+        this.loginModalAbierto.set(false);
+        this.authMessage.set('');
+        this.observability.track('auth', 'registration_success');
+        this.toastService.mostrar('exito', 'Cuenta creada. Ya puedes continuar con tu reserva.');
       },
       error: (error: unknown) => this.mostrarErrorAuth(error),
     });

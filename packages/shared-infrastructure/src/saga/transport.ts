@@ -5,6 +5,7 @@ import {
   Injectable,
   Logger,
   Module,
+  ServiceUnavailableException,
   OnApplicationShutdown,
   OnModuleInit,
 } from "@nestjs/common";
@@ -104,9 +105,32 @@ export class SagaBus implements OnApplicationShutdown {
       },
     );
   }
+  isConnected(): boolean {
+    return this.connection.isConnected();
+  }
   async onApplicationShutdown() {
     await this.channel.close();
     await this.connection.close();
+  }
+}
+
+@Injectable()
+export class SagaReadinessService {
+  constructor(private readonly source: DataSource, private readonly bus: SagaBus) {}
+  async ready(): Promise<{ status: 'UP' }> {
+    if (!this.bus.isConnected()) throw new ServiceUnavailableException({ status: 'DOWN' });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        this.source.query('SELECT 1'),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Database timeout')), 2000); }),
+      ]);
+      return { status: 'UP' };
+    } catch {
+      throw new ServiceUnavailableException({ status: 'DOWN' });
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   }
 }
 
@@ -191,8 +215,9 @@ export class SagaRuntimeModule {
         SagaStore,
         SagaBus,
         SagaOutbox,
+        SagaReadinessService,
       ],
-      exports: [SagaStore, SagaBus, SagaOutbox],
+      exports: [SagaStore, SagaBus, SagaOutbox, SagaReadinessService],
     };
   }
 }

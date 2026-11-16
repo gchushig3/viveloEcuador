@@ -133,7 +133,23 @@ export class JwtAuthGuard implements CanActivate, OnModuleInit {
     )
       return true;
     const match = /^\/api\/v[123]\/auth(\/.*)?$/.exec(request.path);
-    return Boolean(
+    const catalog = /^\/api\/v[123]\/catalog(\/.*)?$/.exec(request.path);
+    const catalogPath = catalog?.[1] ?? '';
+    const catalogRead = request.method.toUpperCase() === 'GET' && (
+      [
+        '/atracciones',
+        '/atracciones/categorias',
+        '/atracciones/categorias/arbol',
+        '/idiomas',
+        '/inclusiones',
+      ].includes(catalogPath) ||
+      /^\/atracciones\/(?:[1-9]\d*|[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i.test(catalogPath) ||
+      /^\/atracciones\/(?:[1-9]\d*|[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/disponibilidad$/i.test(catalogPath)
+    );
+    const catalogSearch = request.method.toUpperCase() === 'POST' && catalogPath === '/atracciones/search';
+    const telemetry = request.method.toUpperCase() === 'POST' && catalogPath === '/observabilidad/eventos';
+    if (/^\/api\/v[123]\/clients\/?$/.test(request.path) && ['GET', 'POST'].includes(request.method.toUpperCase())) return true;
+    return catalogRead || catalogSearch || telemetry || Boolean(
       match &&
         publicIdentityRoutes.has(
           `${request.method.toUpperCase()} ${match[1] ?? '/'}`,

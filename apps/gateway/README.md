@@ -1,4 +1,4 @@
-# API Gateway
+﻿# API Gateway
 
 Gateway NestJS 12 para clientes Web, Mobile y consumidores externos. No incluye
 reglas de negocio ni acceso a bases de datos; valida la identidad y enruta
@@ -20,9 +20,9 @@ npm run start:dev
 La aplicación escucha en `http://localhost:3000`. Swagger está en `/docs`;
 `/health/live` verifica el proceso y `/health` y `/health/ready` consultan la
 disponibilidad de los servicios configurados. La readiness devuelve HTTP 503
-si uno de los seis servicios comprobados (Identity, Cart, Booking, Catalog,
-Inventory o Payment) no responde con un estado exitoso. Audit se enruta, pero no
-bloquea la readiness.
+si uno de los siete servicios comprobados (Identity, Cart, Booking, Catalog,
+Inventory, Payment o Clientes) no responde con un estado exitoso. Audit se
+enruta, pero no bloquea la readiness.
 
 Para desarrollo en contenedor, desde este directorio ejecuta
 `docker compose up --build`; monta `src` y observa cambios. Crea antes el
@@ -39,12 +39,14 @@ contratos ni alteran cuerpos, códigos o respuestas.
 | Ruta pública | Destino predeterminado |
 | --- | --- |
 | `/api/v{1,2,3}/auth/*` | `IDENTITY_URL` + `/api/v2/auth/*` |
+| `/api/v{1,2,3}/identity/*` | `IDENTITY_URL` + `IDENTITY_ADMIN_API_PREFIX` (por defecto `/api/v2`) |
 | `/api/v{1,2,3}/cart/*` | `CART_URL` + `/api/v2/cart/*` |
 | `/api/v{1,2,3}/booking/*` | `BOOKING_URL` + `/api/v3/atracciones/reservas/*` |
 | `/api/v{1,2,3}/catalog/*` | `CATALOG_URL` + `/api/v2/*` |
 | `/api/v{1,2,3}/inventory/*` | `INVENTORY_URL` + `/api/v2/inventory/*` |
 | `/api/v{1,2,3}/payment/*` | `PAYMENT_URL` + `/api/v2/*` |
 | `/api/v{1,2,3}/audit/*` | `AUDIT_URL` + `/api/v2/audit/*` |
+| `/api/v{1,2,3}/clients/*` | `CLIENTS_URL` + `/api/v2/clientes/*` |
 
 Modifica `*_API_PREFIX` si el contrato interno del servicio cambia. El servicio
 de reservas puede desplegarse junto con Catalog; `BOOKING_URL` y su prefijo
@@ -80,16 +82,19 @@ permiten mantenerlo separado o adaptar el enrutamiento sin cambiar código.
   local por un backend compartido antes de depender de límites globales.
 - Se reenvían `traceparent` y `tracestate` recibidos para facilitar la futura
   instrumentación OpenTelemetry. No se exportan spans ni métricas todavía.
-- La readiness consulta `/api/v2/health/ready` en cada servicio y tiene timeout
-  limitado. Ajusta la URL o el path de readiness mediante la configuración del
-  despliegue si un servicio usa otro endpoint.
+- La readiness consulta `/api/v2/health/ready` en Identity, Cart, Payment y Clients,
+  y `/api/v3/atracciones/health` en Catalog y Booking. Exige HTTP 200 y `status: UP`.
+  Para Inventory usa el protocolo `grpc.health.v1.Health/Check` cuando se configura
+  `INVENTORY_GRPC_HEALTH_URL`; solo acepta `SERVING`. En desarrollo conserva el
+  chequeo HTTP si no se configura gRPC. Todas las consultas tienen timeout.
 
 ## Variables de entorno
 
 | Variable | Requerida | Predeterminado / uso |
 | --- | --- | --- |
 | `PORT`, `NODE_ENV` | No | `3000`, `development` |
-| `IDENTITY_URL`, `CART_URL`, `BOOKING_URL`, `CATALOG_URL`, `INVENTORY_URL`, `PAYMENT_URL`, `AUDIT_URL` | Sí | Origen HTTP(S) de cada servicio, sin path |
+| `IDENTITY_URL`, `CART_URL`, `BOOKING_URL`, `CATALOG_URL`, `INVENTORY_URL`, `PAYMENT_URL`, `AUDIT_URL`, `CLIENTS_URL` | Sí | Origen HTTP(S) de cada servicio, sin path |
+| `IDENTITY_ADMIN_API_PREFIX` | No | `/api/v2`; enruta gestión de usuarios y roles por `/api/v{1,2,3}/identity/*` |
 | `*_API_PREFIX` | No | Prefijo upstream de la tabla anterior |
 | `JWT_JWKS_URL` | No | `${IDENTITY_URL}/api/v2/.well-known/jwks.json` |
 | `JWT_PUBLIC_KEY` | No | PEM público RS256 alternativo a JWKS |
@@ -97,7 +102,8 @@ permiten mantenerlo separado o adaptar el enrutamiento sin cambiar código.
 | `CORS_ORIGINS` | No | Lista separada por comas; vacío deshabilita CORS |
 | `RATE_LIMIT_CUSTOMER`, `RATE_LIMIT_PARTNER`, `RATE_LIMIT_ADMIN` | No | `100`, `500`, `1000` por minuto |
 | `PROXY_TIMEOUT_MS`, `HEALTH_TIMEOUT_MS` | No | `30000`, `2500` ms |
-| `HEALTH_IDENTITY_PATH`, `HEALTH_CART_PATH`, `HEALTH_BOOKING_PATH`, `HEALTH_CATALOG_PATH`, `HEALTH_INVENTORY_PATH`, `HEALTH_PAYMENT_PATH` | No | `/api/v2/health/ready` por servicio |
+| `HEALTH_IDENTITY_PATH`, `HEALTH_CART_PATH`, `HEALTH_BOOKING_PATH`, `HEALTH_CATALOG_PATH`, `HEALTH_INVENTORY_PATH`, `HEALTH_PAYMENT_PATH`, `HEALTH_CLIENTS_PATH` | No | `/api/v2/health/ready`; Booking y Catalog usan `/api/v3/atracciones/health` |
+| `INVENTORY_GRPC_HEALTH_URL`, `INVENTORY_GRPC_HEALTH_TLS` | No | Destino `host:puerto` del health gRPC; TLS predeterminado `true` |
 
 La validación de configuración se realiza al arrancar. Las URL de servicios son
 orígenes HTTP(S) sin credenciales, paths, query ni fragmento. No configures

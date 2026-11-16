@@ -8,6 +8,7 @@ const serviceNames = [
   'INVENTORY',
   'PAYMENT',
   'AUDIT',
+  'CLIENTS',
 ] as const;
 
 const healthServiceNames = [
@@ -17,6 +18,7 @@ const healthServiceNames = [
   'CATALOG',
   'INVENTORY',
   'PAYMENT',
+  'CLIENTS',
 ] as const;
 
 const defaultPrefixes: Record<(typeof serviceNames)[number], string> = {
@@ -27,7 +29,20 @@ const defaultPrefixes: Record<(typeof serviceNames)[number], string> = {
   INVENTORY: '/api/v2/inventory',
   PAYMENT: '/api/v2',
   AUDIT: '/api/v2/audit',
+  CLIENTS: '/api/v2/clientes',
 };
+
+function identityAdminPrefix(source: Record<string, unknown>): string {
+  const value = source.IDENTITY_ADMIN_API_PREFIX ?? '/api/v2';
+  if (
+    typeof value !== 'string' ||
+    !/^\/[A-Za-z0-9._/-]*$/.test(value) ||
+    value.includes('//') ||
+    value.split('/').includes('..')
+  )
+    throw new Error('Invalid configuration: IDENTITY_ADMIN_API_PREFIX');
+  return value.replace(/\/+$/, '') || '/';
+}
 
 function requiredString(
   source: Record<string, unknown>,
@@ -93,7 +108,7 @@ function apiPrefix(source: Record<string, unknown>, service: string): string {
 
 function healthPath(source: Record<string, unknown>, service: string): string {
   const key = `HEALTH_${service}_PATH`;
-  const value = source[key] ?? '/api/v2/health/ready';
+  const value = source[key] ?? (['BOOKING', 'CATALOG'].includes(service) ? '/api/v3/atracciones/health' : '/api/v2/health/ready');
   if (
     typeof value !== 'string' ||
     !/^\/[A-Za-z0-9._/-]*$/.test(value) ||
@@ -130,6 +145,11 @@ function corsOrigins(source: Record<string, unknown>): string[] {
 export function validateEnvironment(
   source: Record<string, unknown>,
 ): GatewayEnvironment {
+  const grpcHealthUrl = source.INVENTORY_GRPC_HEALTH_URL;
+  if (grpcHealthUrl !== undefined && (typeof grpcHealthUrl !== 'string' || !/^[a-zA-Z0-9.-]+:[0-9]{1,5}$/.test(grpcHealthUrl) || Number(grpcHealthUrl.split(':')[1]) < 1 || Number(grpcHealthUrl.split(':')[1]) > 65535))
+    throw new Error('Invalid configuration: INVENTORY_GRPC_HEALTH_URL');
+  const grpcHealthTls = source.INVENTORY_GRPC_HEALTH_TLS ?? 'true';
+  if (typeof grpcHealthTls !== 'string' || !['true', 'false'].includes(grpcHealthTls)) throw new Error('Invalid configuration: INVENTORY_GRPC_HEALTH_TLS');
   const nodeEnv = source.NODE_ENV ?? 'development';
   if (
     typeof nodeEnv !== 'string' ||
@@ -198,10 +218,13 @@ export function validateEnvironment(
     throw new Error('Invalid JWT issuer or audience');
 
   return {
+    INVENTORY_GRPC_HEALTH_URL: grpcHealthUrl as string | undefined,
+    INVENTORY_GRPC_HEALTH_TLS: grpcHealthTls === 'true',
     NODE_ENV: nodeEnv as GatewayEnvironment['NODE_ENV'],
     PORT: integer(source, 'PORT', 3000, 1, 65535),
     ...services,
     ...prefixes,
+    IDENTITY_ADMIN_API_PREFIX: identityAdminPrefix(source),
     ...healthPaths,
     JWT_JWKS_URL: parsedJwksUrl.href,
     JWT_PUBLIC_KEY: publicKey?.replace(/\\n/g, '\n') || undefined,

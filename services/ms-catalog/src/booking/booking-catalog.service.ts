@@ -11,6 +11,7 @@ import { CategoriaEntity } from '../database/entities/categoria.entity.js';
 import { BookingProfileEntity } from './booking-profile.entity.js';
 import type { BookingProfile } from './booking-profile.entity.js';
 import type { BookingSearch } from './booking.schemas.js';
+import { InventoryAdminService } from './inventory-admin.service.js';
 import { InventoryAvailabilityService } from './inventory-availability.service.js';
 
 @Injectable()
@@ -23,6 +24,7 @@ export class BookingCatalogService {
     @InjectRepository(CategoriaEntity)
     private readonly categoryRepo: Repository<CategoriaEntity>,
     private readonly inventory: InventoryAvailabilityService,
+    private readonly stock: InventoryAdminService,
   ) {}
 
   private query() {
@@ -270,17 +272,13 @@ export class BookingCatalogService {
       throw new ServiceUnavailableException(
         'Sincronice schedule_times desde Inventory antes de consultar disponibilidad',
       );
-    const slots: Array<{ hora: string; disponible: boolean }> = [];
-    for (const hora of times)
-      slots.push({
-        hora,
-        disponible: await this.inventory.available(
-          item.atr_uuid,
-          fecha,
-          hora,
-          personas,
-        ),
-      });
+    const inventorySlots = await this.stock.list(item.atr_uuid, fecha, fecha);
+    const slots = times.map(hora => {
+      const slot = inventorySlots.find(s => s.timeSlot.slice(0, 5) === hora.slice(0, 5));
+      const available_spots = slot && !slot.closed ? Math.max(0, slot.available) : 0;
+      return { hora, disponible: available_spots >= personas, available_spots,
+        status: available_spots === 0 ? 'AGOTADO' : 'DISPONIBLE' };
+    });
     return {
       atraccion_id: item.atr_uuid,
       fecha,

@@ -4,7 +4,7 @@ import { provideHttpClient } from '@angular/common/http';
 import { provideRouter, Router } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { routes } from '../../app.routes';
-import { API_URL, CATALOG_API_URL, IDENTITY_API_URL, CART_API_URL } from '../../core/api.config';
+import { API_URL, CATALOG_API_URL, IDENTITY_ADMIN_API_URL, IDENTITY_API_URL, CART_API_URL } from '../../core/api.config';
 import { AuthService } from '../../services/auth.service';
 
 function jwt(role: 'CLIENTE' | 'ADMIN') {
@@ -28,6 +28,7 @@ describe('Admin catalog routes', () => {
         { provide: API_URL, useValue: '/api/v1' },
         { provide: CATALOG_API_URL, useValue: '/api/v2' },
         { provide: IDENTITY_API_URL, useValue: '/api/v2' },
+        { provide: IDENTITY_ADMIN_API_URL, useValue: '/api/v2' },
         { provide: CART_API_URL, useValue: '/cart-api/v2' },
       ],
     });
@@ -51,6 +52,8 @@ describe('Admin catalog routes', () => {
     await harness.navigateByUrl('/admin');
     expect(TestBed.inject(Router).url).toBe('/admin');
     const summary = http.expectOne('/api/v2/atracciones/admin/resumen');
+    http.expectOne('/cart-api/v2/cart/admin/summary').flush({ reservas: { total: 0, confirmadas: 0, canceladas: 0, hoy: 0, proximas: 0, ultimas_24h: 0, personas_proximas: 0 }, top_atracciones: [] });
+    http.expectOne('/cart-api/v2/cart/admin/reservations').flush([]);
     http.expectOne(request => request.url === '/api/v2/users' || request.url.endsWith('/users')).flush({ items: [], total: 7, page: 1, limit: 1 });
     summary.flush({
       reservas: { total: 3, confirmadas: 2, canceladas: 1, hoy: 1, proximas: 1, ultimas_24h: 2, personas_proximas: 4 },

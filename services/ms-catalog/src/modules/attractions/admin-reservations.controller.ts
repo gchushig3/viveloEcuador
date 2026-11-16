@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  Body,
   Controller,
   Get,
   HttpCode,
@@ -17,7 +18,7 @@ import {
 } from '@nestjs/swagger';
 import { DataSource } from 'typeorm';
 import { BookingReservationsService } from '../../booking/booking-reservations.service.js';
-import { BookingClientsService } from '../../booking/booking-clients.service.js';
+import { BookingClientsService, parseClientInput } from '../../booking/booking-clients.service.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -46,6 +47,7 @@ const SELECT_RESERVATION = `
          to_char(r.res_hora, 'HH24:MI') AS hora,
          r.res_personas AS personas, r.res_cliente_nombre AS cliente_nombre,
          r.res_cliente_email AS cliente_email, r.res_creada_en AS creada_en,
+         r.res_cliente_uuid::text AS client_id,
          r.res_checkin_en AS checkin_en, r.res_checkin_asistentes AS asistentes_reales,
          r.res_checkin_notificado AS booking_notificado
     FROM reserva_atraccion r
@@ -88,6 +90,13 @@ export class AdminReservationsController {
     private readonly clients: BookingClientsService,
   ) {}
 
+  @Post('clientes')
+  @ApiOperation({ summary: 'Registrar cliente sin crear una cuenta de usuario' })
+  async createClient(@Body() body: unknown) {
+    const result = await this.clients.registerAdmin(parseClientInput(body));
+    return { cliente: result.client, reused: !result.created };
+  }
+
   @Get('reservas')
   @ApiOperation({ summary: 'Listar reservas con filtros y paginacion' })
   async list(@Query() query: Record<string, unknown>) {
@@ -106,6 +115,9 @@ export class AdminReservationsController {
       throw new BadRequestException('estado invalido');
     await this.clients.ensureReservationColumns();
     const q = optionalString(query.q, 'q', 100);
+    const matchedClient = q && /^[\p{L}\p{N}.-]{3,30}$/u.test(q)
+      ? await this.clients.find(undefined, q)
+      : null;
     const desde = optionalDate(query.fecha_desde, 'fecha_desde');
     const hasta = optionalDate(query.fecha_hasta, 'fecha_hasta');
     const page = positiveInt(query.page, 'page', 1);
@@ -125,9 +137,13 @@ export class AdminReservationsController {
       const escaped = q.replace(/[\\%_]/g, (c) => `\\${c}`);
       params.push(`%${escaped}%`);
       const n = `$${params.length}`;
+      let clientMatch = '';
+      if (matchedClient) {
+        params.push(matchedClient.client_id);
+        clientMatch = ` OR r.res_cliente_uuid::text = $${params.length}`;
+      }
       conditions.push(
-        `(r.res_cliente_nombre ILIKE ${n} OR r.res_cliente_email ILIKE ${n} OR a.atr_nombre ILIKE ${n} OR r.res_uuid::text ILIKE ${n} OR EXISTS
-          (SELECT 1 FROM cliente_atraccion c WHERE c.cli_uuid = r.res_cliente_uuid AND c.cli_identificacion ILIKE ${n}))`,
+        `(r.res_cliente_nombre ILIKE ${n} OR r.res_cliente_email ILIKE ${n} OR a.atr_nombre ILIKE ${n} OR r.res_uuid::text ILIKE ${n}${clientMatch})`,
       );
     }
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
@@ -150,6 +166,39 @@ export class AdminReservationsController {
       limit,
       total_pages: Math.max(1, Math.ceil(total / limit)),
     };
+  }
+
+  @Get('clientes')
+  @ApiOperation({ summary: 'Consultar clientes registrados y su origen de compra' })
+  async clientsList(@Query() query: Record<string, unknown>) {
+    const allowed = ['q', 'page', 'limit'];
+    if (Object.keys(query).some((key) => !allowed.includes(key)))
+      throw new BadRequestException('Parametro de consulta no permitido');
+    const q = optionalString(query.q, 'q', 100);
+    const page = positiveInt(query.page, 'page', 1);
+    const limit = positiveInt(query.limit, 'limit', 20);
+    if (limit > 100) throw new BadRequestException('limit maximo 100');
+    return this.clients.list(page, limit, q);
+  }
+
+  @Get('clientes/:id')
+  @ApiOperation({ summary: 'Consultar cliente e historial de reservas' })
+  async clientDetail(@Param('id') id: string) {
+    if (!UUID.test(id)) throw new BadRequestException('client_id invalido');
+    const client = await this.clients.byId(id.toLowerCase());
+    if (!client) throw new NotFoundException('Cliente no encontrado');
+    await this.clients.ensureReservationColumns();
+    const reservas = await this.dataSource.query<Array<Record<string, unknown>>>(
+      `SELECT r.res_uuid::text AS reserva_id, r.res_estado AS estado,
+              a.atr_nombre AS atraccion, to_char(r.res_fecha,'YYYY-MM-DD') AS fecha,
+              to_char(r.res_hora,'HH24:MI') AS hora, r.res_personas AS personas,
+              r.res_creada_en AS creada_en
+         FROM reserva_atraccion r JOIN atraccion a USING (atr_id)
+        WHERE r.res_cliente_uuid=$1::uuid
+        ORDER BY r.res_creada_en DESC, r.res_id DESC`,
+      [id.toLowerCase()],
+    );
+    return { ...client, reservas };
   }
 
   @Get('reservas/:id')

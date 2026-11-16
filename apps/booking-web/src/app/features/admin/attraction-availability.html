@@ -1,5 +1,11 @@
 <section class="mt-6 rounded-2xl border border-stone-200 bg-white p-6 shadow-sm" aria-labelledby="availability-title">
   <h3 id="availability-title" class="text-xl font-bold">Disponibilidad y cupos</h3>
+  <p class="mt-2 text-sm text-slate-600">Stock de {{ attraction().name }} por fecha y horario. Actualización automática cada 3 segundos.</p>
+  <p role="status" class="mt-1 text-sm text-teal-800">
+    @if (lastUpdated()) { Última consulta de stock: {{ lastUpdated() }}. }
+    @if (loading()) { Consultando stock... }
+  </p>
+  @if (syncError()) { <p role="alert" class="mt-2 text-sm text-amber-800">{{ syncError() }}</p> }
   <div class="mt-4 grid grid-cols-3 gap-3" aria-label="Cupos del rango consultado">
     <div class="rounded-xl bg-teal-50 p-3"><p class="text-xs text-teal-800">Disponibles</p><p class="text-2xl font-bold">{{ totals().available }}</p></div>
     <div class="rounded-xl bg-stone-50 p-3"><p class="text-xs text-slate-600">Reservados</p><p class="text-2xl font-bold">{{ totals().reserved }}</p></div>

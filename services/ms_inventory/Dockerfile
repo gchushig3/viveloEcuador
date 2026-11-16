@@ -26,6 +26,7 @@ COPY --from=production-dependencies --chown=node:node /app/node_modules ./node_m
 COPY --from=build --chown=node:node /app/dist ./dist
 COPY --chown=node:node services/ms_inventory/package.json ./
 COPY --chown=node:node contracts/grpc/inventory.proto ./contracts/grpc/inventory.proto
+COPY --chown=node:node contracts/grpc/health.proto ./contracts/grpc/health.proto
 ENV INVENTORY_PROTO_PATH=/app/contracts/grpc/inventory.proto
 USER node
 EXPOSE 50051

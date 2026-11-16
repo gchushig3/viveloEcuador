@@ -9,6 +9,10 @@ Microservicio de geografia del Sistema de Atracciones (Descubre EC).
 
 ## Endpoints
 
+El contrato OpenAPI 3.0 está en
+[`contract/ms_location-openapi-v1.yaml`](contract/ms_location-openapi-v1.yaml).
+Incluye los esquemas, los endpoints de ubicación de atracciones y el health check.
+
 | Metodo | Ruta | Descripcion | Respuesta |
 |---|---|---|---|
 | GET | `/api/v2/regiones` | Listar regiones | 200 |

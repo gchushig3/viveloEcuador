@@ -223,7 +223,9 @@ la continuación requiere contratos aprobados y autorización explícita.
 
 ## Clientes y check-in presencial (Booking v3.1)
 
-- `GET/POST /api/v3/clientes`: busqueda y registro de turistas sin duplicar (por email o identificacion). Las reservas de Booking crean o enlazan el cliente automaticamente.
+- La identidad del cliente ahora pertenece a `ms-cliente`; configura `CLIENT_SERVICE_URL` en Catalog y migra `cliente_atraccion` antes de dirigir las solicitudes al servicio nuevo. Los UUID se conservan para mantener el enlace con las reservas existentes.
+
+- `GET /api/v3/clientes?identificacion={documento}` busca directamente por identificación; también acepta `email`. Devuelve `client_id`, nombre, correo e identificación registrados. `POST /api/v3/clientes` registra turistas sin duplicar. Si una reserva enlaza un cliente existente por identificación, conserva su correo registrado y su UUID aunque Booking haya enviado otro correo.
 - `POST /api/v3/atracciones/reservas` acepta el documento como `cliente_identificacion`, `cliente_documento` o `customer_identification`; si se envian varios deben coincidir. Un documento o correo ya asociado a otro cliente se rechaza para evitar mezclar identidades. El cambio no completa documentos de reservas creadas anteriormente.
 - `POST /api/v3/atracciones/reservas/{id}/checkin`: requiere JWT ADMIN; confirma asistencia, emite el pase y notifica a Booking Central (`POST {BOOKING_CORE_URL}/api/v3/atracciones/reservas/{codigo_reserva}/checkin` con `X-API-Key` y los campos `documento_identidad` y `guia_asignado`). Se usa el UUID `reserva_id` devuelto al crear la reserva, aceptado por Booking. Si falta el documento o Booking no responde HTTP 200, la respuesta trae `booking_notificado: false` y repetir la llamada reintenta la notificacion.
 - Variables (en Azure Container Apps > Secrets y Environment variables): `BOOKING_CORE_URL` y `BOOKING_CORE_API_KEY`, la clave registrada en Booking Central. Si falta o Booking no confirma el check-in, se conserva la asistencia local y se permite reintentar la notificacion.

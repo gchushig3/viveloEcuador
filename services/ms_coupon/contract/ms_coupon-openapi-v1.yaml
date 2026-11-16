@@ -1,0 +1,349 @@
+openapi: 3.0.3
+info:
+  title: MS Coupon API
+  version: 1.0.0
+  description: API para consultar y administrar cupones de descuento.
+servers:
+  - url: /
+tags:
+  - name: Coupons
+  - name: Health
+paths:
+  /api/v2/cupones:
+    get:
+      operationId: listCoupons
+      summary: Listar cupones
+      description: Lista todos los cupones ordenados por cup_id ascendente.
+      tags: [Coupons]
+      security: []
+      responses:
+        '200':
+          description: Lista de cupones.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Coupon'
+    post:
+      operationId: createCoupon
+      summary: Crear un cupón
+      tags: [Coupons]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CouponInput'
+      responses:
+        '201':
+          description: Cupón creado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Coupon'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+        '409':
+          description: El código del cupón ya existe.
+  /api/v2/cupones/codigo/{cupCodigo}:
+    get:
+      operationId: getCouponByCode
+      summary: Consultar un cupón por código
+      tags: [Coupons]
+      security: []
+      parameters:
+        - name: cupCodigo
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Cupón encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Coupon'
+        '404':
+          description: No existe un cupón con ese código.
+  /api/v2/cupones/validar/{cupCodigo}:
+    get:
+      operationId: validateCoupon
+      summary: Evaluar si un cupón está activo y vigente
+      description: La fecha usada para la evaluación es hoy cuando se omite el parámetro fecha.
+      tags: [Coupons]
+      security: []
+      parameters:
+        - name: cupCodigo
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: fecha
+          in: query
+          required: false
+          description: Fecha de evaluación ISO 8601 (AAAA-MM-DD).
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Resultado de la evaluación.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CouponValidation'
+        '400':
+          description: La fecha no tiene formato válido o contiene parámetros adicionales.
+        '404':
+          description: No existe un cupón con ese código.
+  /api/v2/cupones/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/BigId'
+    get:
+      operationId: getCoupon
+      summary: Consultar un cupón por identificador
+      tags: [Coupons]
+      security: []
+      responses:
+        '200':
+          description: Cupón encontrado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Coupon'
+        '400':
+          description: Identificador no válido.
+        '404':
+          description: Cupón no encontrado.
+    put:
+      operationId: replaceCoupon
+      summary: Reemplazar un cupón
+      description: Requiere el rol ADMIN. El cuerpo usa el mismo esquema que la creación.
+      tags: [Coupons]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CouponInput'
+      responses:
+        '204':
+          description: Cupón reemplazado.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+        '404':
+          description: Cupón no encontrado.
+    patch:
+      operationId: updateCoupon
+      summary: Actualizar parcialmente un cupón
+      description: Requiere el rol ADMIN. Se debe enviar al menos una propiedad.
+      tags: [Coupons]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CouponUpdate'
+      responses:
+        '200':
+          description: Cupón actualizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Coupon'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+        '404':
+          description: Cupón no encontrado.
+    delete:
+      operationId: deleteCoupon
+      summary: Eliminar un cupón
+      description: Requiere el rol ADMIN. La eliminación es física.
+      tags: [Coupons]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Cupón eliminado.
+        '400':
+          description: Identificador no válido.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Se requiere el rol ADMIN.
+        '404':
+          description: Cupón no encontrado.
+  /api/v2/health:
+    get:
+      operationId: checkCouponHealth
+      summary: Consultar estado del servicio
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: Servicio saludable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheck'
+        '503':
+          description: Servicio no saludable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheck'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    BadRequest:
+      description: Cuerpo de entrada o identificador inválido.
+    Unauthorized:
+      description: Token ausente, inválido o sesión no válida.
+  schemas:
+    BigId:
+      type: string
+      pattern: '^[1-9][0-9]{0,18}$'
+      description: Identificador BIGINT positivo representado como texto.
+      example: '17'
+    CouponType:
+      type: string
+      enum: [PORCENTAJE, FIJO]
+    CouponInput:
+      type: object
+      additionalProperties: false
+      required: [cup_codigo, cup_tipo, cup_valor, cup_fecha_inicio]
+      properties:
+        cup_codigo:
+          type: string
+          minLength: 1
+          maxLength: 30
+          pattern: '^[A-Z0-9_-]+$'
+        cup_tipo:
+          $ref: '#/components/schemas/CouponType'
+        cup_valor:
+          type: number
+          minimum: 0
+          maximum: 9999999999.99
+          description: Para PORCENTAJE el máximo es 100; FIJO permite hasta el máximo general.
+        cup_fecha_inicio:
+          type: string
+          format: date
+        cup_fecha_fin:
+          type: string
+          format: date
+          nullable: true
+          description: Debe ser igual o posterior a cup_fecha_inicio.
+        cup_usos_max:
+          type: integer
+          minimum: 1
+          nullable: true
+          description: NULL significa sin límite.
+        cup_activo:
+          type: boolean
+          default: true
+    CouponUpdate:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        cup_codigo:
+          type: string
+          minLength: 1
+          maxLength: 30
+          pattern: '^[A-Z0-9_-]+$'
+        cup_tipo:
+          $ref: '#/components/schemas/CouponType'
+        cup_valor:
+          type: number
+          minimum: 0
+          maximum: 9999999999.99
+          description: Para PORCENTAJE el máximo es 100.
+        cup_fecha_inicio:
+          type: string
+          format: date
+        cup_fecha_fin:
+          type: string
+          format: date
+          nullable: true
+        cup_usos_max:
+          type: integer
+          minimum: 1
+          nullable: true
+        cup_activo:
+          type: boolean
+    Coupon:
+      type: object
+      required: [cup_id, cup_codigo, cup_tipo, cup_valor, cup_fecha_inicio, cup_fecha_fin, cup_usos_max, cup_activo]
+      properties:
+        cup_id:
+          $ref: '#/components/schemas/BigId'
+        cup_codigo:
+          type: string
+        cup_tipo:
+          $ref: '#/components/schemas/CouponType'
+        cup_valor:
+          type: string
+          description: NUMERIC(12,2) serializado por PostgreSQL/TypeORM como texto.
+          example: '10.00'
+        cup_fecha_inicio:
+          type: string
+          format: date
+        cup_fecha_fin:
+          type: string
+          format: date
+          nullable: true
+        cup_usos_max:
+          type: integer
+          nullable: true
+        cup_activo:
+          type: boolean
+    CouponValidation:
+      type: object
+      required: [valido, codigo, tipo, valor, vigente_desde, vigente_hasta]
+      properties:
+        valido:
+          type: boolean
+        codigo:
+          type: string
+        tipo:
+          $ref: '#/components/schemas/CouponType'
+        valor:
+          type: string
+        vigente_desde:
+          type: string
+          format: date
+        vigente_hasta:
+          type: string
+          format: date
+          nullable: true
+    HealthCheck:
+      type: object
+      additionalProperties: true

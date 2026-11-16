@@ -21,7 +21,7 @@ async function bootstrap(): Promise<void> {
   app.getHttpAdapter().getInstance().disable('x-powered-by');
   app.enableCors({
     origin: env.CORS_ORIGINS.length === 0 ? false : env.CORS_ORIGINS,
-    credentials: false,
+    credentials: true,
   });
   app.use(app.get(CorrelationIdMiddleware).use.bind(app.get(CorrelationIdMiddleware)));
   app.useGlobalInterceptors(app.get(RequestLoggingInterceptor));

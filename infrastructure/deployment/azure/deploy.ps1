@@ -1,5 +1,5 @@
 <#
-Despliega los 12 microservicios en Azure Container Apps.
+Despliega los microservicios y el API Gateway en Azure Container Apps.
 Uso (desde la raiz del repo):
   .\infrastructure\deployment\azure\deploy.ps1 -Tag v1                  # todos
   .\infrastructure\deployment\azure\deploy.ps1 -Tag v2 -Only ms-catalog # uno solo
@@ -47,15 +47,17 @@ $services = @(
   @{ n='ms-inventory'; d='ms_inventory'; p=3017; ext=$true; amqp=$true; env=@(
       'SAGA_EXCHANGE=booking.saga.v1','AMQP_AUDIT_QUEUE=booking.audit.events','GRPC_HOST=0.0.0.0','GRPC_PORT=50051',
       'INVENTORY_PROTO_PATH=/app/contracts/grpc/inventory.proto','INVENTORY_SERVICE_ID=NODE_ATR_GLORIA') },
+  @{ n='ms-cliente'; d='ms-cliente'; p=8080; ext=$false; amqp=$false; env=@() },
   @{ n='ms-catalog'; d='ms-catalog'; p=8080; ext=$true; amqp=$true; env=@(
       'AMQP_QUEUE=ms_catalog.events','AMQP_PREFETCH=10','CATALOG_EVENTS_QUEUE=booking.catalog.events','AMQP_EXCHANGE=booking.events',
       'AMQP_AUDIT_QUEUE=booking.audit.events','AMQP_CATALOG_QUEUE=catalog.reviews',
       "INVENTORY_GRPC_URL=$grpcHost",'INVENTORY_GRPC_TLS=true','INVENTORY_PROTO_PATH=/app/contracts/grpc/inventory.proto',
-      'INVENTORY_SERVICE_ID=NODE_ATR_GLORIA',"LOCATION_BASE_URL=https://ms-location.internal.$domain/api/v2") },
+      'INVENTORY_SERVICE_ID=NODE_ATR_GLORIA',"LOCATION_BASE_URL=https://ms-location.internal.$domain/api/v2",
+      "CLIENT_SERVICE_URL=https://ms-cliente.internal.$domain/api/v2/clientes") },
   @{ n='ms-cart'; d='ms_cart'; p=8080; ext=$false; amqp=$true; env=@(
       'SAGA_EXCHANGE=booking.saga.v1','AMQP_AUDIT_QUEUE=booking.audit.events',"CATALOG_BASE_URL=$(Url 'ms-catalog')/api/v2",
       "INVENTORY_GRPC_URL=$grpcHost",'INVENTORY_GRPC_TLS=true','INVENTORY_PROTO_PATH=/app/contracts/grpc/inventory.proto',
-      'INVENTORY_SERVICE_ID=NODE_ATR_GLORIA','RESERVATION_TTL_SECONDS=900','PAYMENT_ALLOW_TEST_PAYLOADS=false') },
+      'INVENTORY_SERVICE_ID=NODE_ATR_GLORIA','RESERVATION_TTL_SECONDS=900','PAYMENT_ALLOW_TEST_PAYLOADS=false',"CLIENT_SERVICE_URL=https://ms-cliente.internal.$domain/api/v2/clientes") },
   @{ n='ms-payment'; d='ms_payment'; p=8080; ext=$false; amqp=$true; env=@(
       'SAGA_EXCHANGE=booking.saga.v1','AMQP_AUDIT_QUEUE=booking.audit.events','SAGA_SIMULATION_ENABLED=true',
       'PAYMENT_SIMULATION_FAILURE_RATE=0.35','PAYMENT_ALLOW_TEST_PAYLOADS=false',
@@ -66,7 +68,8 @@ $services = @(
   @{ n='ms-support'; d='ms_support'; p=8080; ext=$false; amqp=$false; env=@() },
   @{ n='ms-billing-profile'; d='ms_billing_profile'; p=8080; ext=$false; amqp=$false; env=@() },
   @{ n='ms-location'; d='ms_location'; p=8080; ext=$false; amqp=$false; env=@() },
-  @{ n='ms-coupon'; d='ms_coupon'; p=8080; ext=$false; amqp=$false; env=@() }
+  @{ n='ms-coupon'; d='ms_coupon'; p=8080; ext=$false; amqp=$false; env=@() },
+  @{ n='api-gateway'; d='apps/gateway'; p=3000; ext=$true; amqp=$false; gateway=$true; env=@() }
 )
 if ($Only.Count) { $services = $services | Where-Object { $Only -contains $_.n } }
 
@@ -78,26 +81,48 @@ foreach ($s in $services) {
   $image = "$acrServer/$($s.n):$Tag"
   if (-not $SkipBuild) {
     Write-Host "== build $($s.n)"
-    docker build -q -f "$root\services\$($s.d)\Dockerfile" -t $image $root | Out-Null
+    $dockerfile = if ($s.gateway) { "$root\apps\gateway\Dockerfile" } else { "$root\services\$($s.d)\Dockerfile" }
+    docker build -q -f $dockerfile -t $image $root | Out-Null
     if ($LASTEXITCODE) { throw "build fallo: $($s.n)" }
     docker push -q $image | Out-Null
     if ($LASTEXITCODE) { throw "push fallo: $($s.n)" }
   }
-  $dbUrl = (Get-DotEnv $s.d 'DATABASE_URL') -replace '&channel_binding=require',''
-  $secretArgs = @("db-url=$dbUrl", "booking-key=$($secrets.BOOKING_API_KEY)")
-  $envArgs = @('NODE_ENV=production','APP_ENV=production',"PORT=$($s.p)",'DB_POOL_MAX=5',
-    "IDENTITY_BASE_URL=$(Url 'ms-identity')/api/v2",'DATABASE_URL=secretref:db-url','BOOKING_API_KEY=secretref:booking-key')
-  # Cada servicio usa el broker de su propio .env: ms-catalog y la saga (inventory/cart/payment) no comparten broker.
-  if ($s.amqp) { $secretArgs += "amqp-url=$(Get-DotEnv $s.d 'AMQP_URL')"; $envArgs += 'AMQP_URL=secretref:amqp-url' }
-  if ($s.n -eq 'ms-identity') { $secretArgs += "jwt-keyring=$($secrets.JWT_KEYRING_JSON.Replace('"','\"'))"; $envArgs += 'JWT_KEYRING_JSON=secretref:jwt-keyring' }
-  if ($s.n -in 'ms-inventory','ms-catalog') { $secretArgs += "sync-key=$($secrets.INVENTORY_SYNC_API_KEY)"; $envArgs += 'INVENTORY_SYNC_API_KEY=secretref:sync-key' }
-  if ($s.n -in 'ms-inventory','ms-catalog') {
-    $envArgs += 'BOOKING_CORE_URL=https://booking-core-api.azurewebsites.net'
-    if ($secrets.BOOKING_CORE_API_KEY) {
-      $secretArgs += "booking-core-key=$($secrets.BOOKING_CORE_API_KEY)"
-      $envArgs += 'BOOKING_CORE_API_KEY=secretref:booking-core-key'
-    } else {
-      Write-Warning "BOOKING_CORE_API_KEY no esta en .secrets.json; se requiere configurarla como secreto en Azure."
+  if ($s.gateway) {
+    $secretArgs = @()
+    $envArgs = @(
+      'NODE_ENV=production', "PORT=$($s.p)",
+      "IDENTITY_URL=$(Url 'ms-identity')",
+      "CART_URL=https://ms-cart.internal.$domain",
+      "BOOKING_URL=$(Url 'ms-catalog')",
+      "CATALOG_URL=$(Url 'ms-catalog')",
+      "INVENTORY_URL=$(Url 'ms-inventory')",
+      "PAYMENT_URL=https://ms-payment.internal.$domain",
+      "AUDIT_URL=https://ms-audit.internal.$domain",
+      "CLIENTS_URL=https://ms-cliente.internal.$domain",
+      "JWT_JWKS_URL=$(Url 'ms-identity')/api/v2/.well-known/jwks.json",
+      'IDENTITY_ADMIN_API_PREFIX=/api/v2',
+      'JWT_ISSUER=urn:descubreec:identity',
+      'JWT_AUDIENCE=urn:descubreec:internal-api',
+      "INVENTORY_GRPC_HEALTH_URL=$grpcHost",'INVENTORY_GRPC_HEALTH_TLS=true','HEALTH_TIMEOUT_MS=8000',
+      'CORS_ORIGINS=https://booking-frontend.pages.dev,https://viveloecuador-hufhcvg6eah6e2fm.brazilsouth-01.azurewebsites.net'
+    )
+  } else {
+    $dbUrl = (Get-DotEnv $s.d 'DATABASE_URL') -replace '&channel_binding=require',''
+    $secretArgs = @("db-url=$dbUrl", "booking-key=$($secrets.BOOKING_API_KEY)")
+    $envArgs = @('NODE_ENV=production','APP_ENV=production',"PORT=$($s.p)",'DB_POOL_MAX=5',
+      "IDENTITY_BASE_URL=$(Url 'ms-identity')/api/v2",'DATABASE_URL=secretref:db-url','BOOKING_API_KEY=secretref:booking-key')
+    # Cada servicio usa el broker de su propio .env: ms-catalog y la saga (inventory/cart/payment) no comparten broker.
+    if ($s.amqp) { $secretArgs += "amqp-url=$(Get-DotEnv $s.d 'AMQP_URL')"; $envArgs += 'AMQP_URL=secretref:amqp-url' }
+    if ($s.n -eq 'ms-identity') { $secretArgs += "jwt-keyring=$($secrets.JWT_KEYRING_JSON.Replace('"','\"'))"; $envArgs += 'JWT_KEYRING_JSON=secretref:jwt-keyring' }
+    if ($s.n -in 'ms-inventory','ms-catalog') { $secretArgs += "sync-key=$($secrets.INVENTORY_SYNC_API_KEY)"; $envArgs += 'INVENTORY_SYNC_API_KEY=secretref:sync-key' }
+    if ($s.n -in 'ms-inventory','ms-catalog') {
+      $envArgs += 'BOOKING_CORE_URL=https://booking-core-api.azurewebsites.net'
+      if ($secrets.BOOKING_CORE_API_KEY) {
+        $secretArgs += "booking-core-key=$($secrets.BOOKING_CORE_API_KEY)"
+        $envArgs += 'BOOKING_CORE_API_KEY=secretref:booking-core-key'
+      } else {
+        Write-Warning "BOOKING_CORE_API_KEY no esta en .secrets.json; se requiere configurarla como secreto en Azure."
+      }
     }
   }
   $envArgs += $s.env
@@ -109,14 +134,21 @@ foreach ($s in $services) {
   Write-Host "== deploy $($s.n)"
   $exists = & $az containerapp list -g $rg --query "[?name=='$($s.n)'].name" -o tsv
   if (-not $exists) {
-    & $az containerapp create -g $rg -n $s.n --environment $envName --image $image `
-      --registry-server $acrServer --registry-username $acrUser --registry-password $acrPass `
-      @ingress --min-replicas 1 --max-replicas 1 --cpu 0.25 --memory 0.5Gi `
-      --secrets @secretArgs --env-vars @envArgs -o none
+    $cpu = if ($s.gateway) { '0.5' } else { '0.25' }
+    $memory = if ($s.gateway) { '1.0Gi' } else { '0.5Gi' }
+    $createArgs = @('-g',$rg,'-n',$s.n,'--environment',$envName,'--image',$image,
+      '--registry-server',$acrServer,'--registry-username',$acrUser,'--registry-password',$acrPass)
+    $createArgs += $ingress
+    $createArgs += @('--min-replicas','1','--max-replicas','1','--cpu',$cpu,'--memory',$memory)
+    if ($secretArgs.Count -gt 0) { $createArgs += '--secrets'; $createArgs += $secretArgs }
+    $createArgs += '--env-vars'; $createArgs += $envArgs; $createArgs += @('-o','none')
+    & $az containerapp create @createArgs
   } else {
-    $ErrorActionPreference = 'Continue'
-    & $az containerapp secret set -g $rg -n $s.n --secrets @secretArgs -o none 2>$null
-    $ErrorActionPreference = 'Stop'
+    if ($secretArgs.Count -gt 0) {
+      $ErrorActionPreference = 'Continue'
+      & $az containerapp secret set -g $rg -n $s.n --secrets @secretArgs -o none 2>$null
+      $ErrorActionPreference = 'Stop'
+    }
     & $az containerapp update -g $rg -n $s.n --image $image --set-env-vars @envArgs -o none
   }
 }

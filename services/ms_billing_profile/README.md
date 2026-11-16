@@ -3,21 +3,23 @@
 Microservicio de facturacion del Sistema de Atracciones (Descubre EC).
 
 - **Responsabilidad:** Gestionar los datos de facturacion: tabla `dato_facturacion`.
-- **Contrato:** REST (`/api/v1/...`), prefijo global `api/v1`, Swagger UI en `/api/docs`.
+- **Contrato:** [OpenAPI 3.0](contract/ms_billing_profile-openapi-v1.yaml); prefijo global `/api/v2`.
 - **Base de datos:** `ms_billing_profile` (database-per-service).
-- **Dependencias externas:** Ninguna (no consume otros microservicios).
+- **Autenticación:** access JWT validado por Identity; cada operación queda limitada al usuario del token.
 
 ## Endpoints
 
-| Metodo | Ruta | Descripcion | Respuesta |
-|---|---|---|---|
-| GET | `/api/v1/datos-facturacion` | Listar todos los datos de facturacion | 200 |
-| GET | `/api/v1/datos-facturacion/usuario/:usuId` | Listar datos de facturacion por usuario | 200 / 404 / 400 |
-| GET | `/api/v1/datos-facturacion/:id` | Obtener un dato por su identificador | 200 / 404 / 400 |
-| POST | `/api/v1/datos-facturacion` | Crear un dato de facturacion | 201 + `Location` |
-| PUT | `/api/v1/datos-facturacion/:id` | Reemplazar un dato | 204 |
-| PATCH | `/api/v1/datos-facturacion/:id` | Actualizar parcialmente un dato | 200 / 404 |
-| DELETE | `/api/v1/datos-facturacion/:id` | Eliminar un dato | 204 |
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/api/v2/billing-profiles` | Lista los datos activos del usuario autenticado. |
+| GET | `/api/v2/billing-profiles/:id` | Obtiene un dato activo propio. |
+| POST | `/api/v2/billing-profiles` | Crea un dato y devuelve `201` con `Location`. |
+| PATCH | `/api/v2/billing-profiles/:id` | Actualiza razón social, correo, teléfono o estado principal. |
+| DELETE | `/api/v2/billing-profiles/:id` | Desactiva el dato (baja lógica) y devuelve `204`. |
+| GET | `/api/v2/health` | Health check público. |
+
+El contrato OpenAPI detalla esquemas, validaciones y respuestas de error.
+El servicio no expone Swagger UI.
 
 ## Base de datos
 
@@ -37,7 +39,7 @@ psql -U postgres -d ms_billing_profile -f init-billing_profile.sql
 npm run start:dev
 ```
 
-Swagger UI: <http://localhost:3000/api/docs>
+API local: <http://localhost:3000/api/v2>
 
 ## Tests
 

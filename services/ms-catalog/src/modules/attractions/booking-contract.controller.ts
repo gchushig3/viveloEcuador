@@ -12,7 +12,14 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
-import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiConflictResponse,
+  ApiHeader,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { DataSource } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import { ClientProxyFactory } from '@nestjs/microservices';
@@ -22,6 +29,10 @@ import { rabbitMqOptions } from '@booking/infrastructure';
 import { PublicEndpoint } from '../../common/public-endpoint.decorator.js';
 import { BookingCatalogService } from '../../booking/booking-catalog.service.js';
 import { BookingReservationsService } from '../../booking/booking-reservations.service.js';
+import {
+  cancellationResponseSchema,
+  validateCancellation,
+} from '../../booking/cancellation.js';
 
 interface ReservationInput {
   atraccion_id: string;
@@ -34,7 +45,6 @@ interface ReservationInput {
   cliente_telefono?: string;
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ATTRACTION_ID =
   /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[1-9]\d{0,17})$/i;
 
@@ -63,7 +73,9 @@ export function parseReservation(body: unknown): ReservationInput {
     })
     .filter(Boolean);
   if (new Set(documents).size > 1)
-    throw new BadRequestException('identificaciones de cliente contradictorias');
+    throw new BadRequestException(
+      'identificaciones de cliente contradictorias',
+    );
   const identificacion = documents[0] ?? '';
   const telefono = text(b.cliente_telefono ?? b.customer_phone).trim();
   if (identificacion.length > 30 || telefono.length > 30)
@@ -103,7 +115,10 @@ export function parseReservation(body: unknown): ReservationInput {
   };
 }
 
-async function checkDependencies(dataSource: DataSource, config: ConfigService) {
+async function checkDependencies(
+  dataSource: DataSource,
+  config: ConfigService,
+) {
   let databaseConnected = false;
   let rabbitmqConnected = false;
   try {
@@ -154,7 +169,8 @@ export class BookingRootHealthController {
   @ApiOperation({ summary: 'Health central para Booking (incluye PostgreSQL)' })
   async health(@Res({ passthrough: true }) response: Response) {
     const result = await checkDependencies(this.dataSource, this.config);
-    if (result.status === 'DOWN') response.status(HttpStatus.SERVICE_UNAVAILABLE);
+    if (result.status === 'DOWN')
+      response.status(HttpStatus.SERVICE_UNAVAILABLE);
     return result;
   }
 }
@@ -207,7 +223,8 @@ export class BookingContractController implements OnModuleInit {
   })
   async health(@Res({ passthrough: true }) response: Response) {
     const result = await checkDependencies(this.dataSource, this.config);
-    if (result.status === 'DOWN') response.status(HttpStatus.SERVICE_UNAVAILABLE);
+    if (result.status === 'DOWN')
+      response.status(HttpStatus.SERVICE_UNAVAILABLE);
     return result;
   }
 
@@ -252,13 +269,84 @@ export class BookingContractController implements OnModuleInit {
       personas === undefined ? 1 : Number(personas),
     );
   }
+}
+
+@ApiTags('Booking')
+@Controller('atracciones/reservas')
+export class BookingCancellationController {
+  constructor(private readonly reservations: BookingReservationsService) {}
 
   @PublicEndpoint()
-  @Post('reservas/:id/cancel')
+  @Post(':id/cancel')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Cancelar una reserva (compensacion Saga)' })
-  async cancelReservation(@Param('id') id: string) {
-    if (!UUID.test(id)) throw new BadRequestException('reserva_id invalido');
-    return this.reservations.cancel(id.toLowerCase());
+  @ApiHeader({ name: 'Idempotency-Key', required: false })
+  @ApiHeader({
+    name: 'X-Correlation-Id',
+    required: false,
+    schema: { type: 'string', example: 'cid-example' },
+  })
+  @ApiBody({
+    required: false,
+    schema: {
+      type: 'object',
+      properties: { reason: { type: 'string', maxLength: 500 } },
+    },
+  })
+  @ApiOkResponse({ schema: cancellationResponseSchema })
+  @ApiConflictResponse({
+    description:
+      'Cancelación No Permitida por check-in o Cancelación Fuera de Plazo: menos de 24 horas antes del turno.',
+  })
+  async cancelReservation(
+    @Param('id') id: string,
+    @Body() body?: unknown,
+    @Headers('Idempotency-Key') key?: string,
+    @Headers('X-Correlation-Id') correlation?: string,
+  ) {
+    if (!ATTRACTION_ID.test(id))
+      throw new BadRequestException('reserva_id invalido');
+    validateCancellation(body, key, correlation);
+    return this.reservations.cancel(id);
+  }
+}
+
+@ApiTags('Booking')
+@Controller('reservas')
+export class BookingCancellationAliasController {
+  constructor(private readonly reservations: BookingReservationsService) {}
+
+  @PublicEndpoint()
+  @Post(':id/cancel')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Alias compatible de cancelacion Booking' })
+  @ApiHeader({ name: 'Idempotency-Key', required: false })
+  @ApiHeader({
+    name: 'X-Correlation-Id',
+    required: false,
+    schema: { type: 'string', example: 'cid-example' },
+  })
+  @ApiBody({
+    required: false,
+    schema: {
+      type: 'object',
+      properties: { reason: { type: 'string', maxLength: 500 } },
+    },
+  })
+  @ApiOkResponse({ schema: cancellationResponseSchema })
+  @ApiConflictResponse({
+    description:
+      'Cancelación No Permitida por check-in o Cancelación Fuera de Plazo: menos de 24 horas antes del turno.',
+  })
+  cancel(
+    @Param('id') id: string,
+    @Body() body?: unknown,
+    @Headers('Idempotency-Key') key?: string,
+    @Headers('X-Correlation-Id') correlation?: string,
+  ) {
+    if (!ATTRACTION_ID.test(id))
+      throw new BadRequestException('reserva_id invalido');
+    validateCancellation(body, key, correlation);
+    return this.reservations.cancel(id);
   }
 }

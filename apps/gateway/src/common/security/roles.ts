@@ -20,11 +20,17 @@ export function requiredRolesForRequest(
   method: string,
 ): GatewayRole[] | undefined {
   const path = tail.toLowerCase();
+  if (service === 'identity') return ['ADMIN'];
   if (service === 'audit' || service === 'auth' && /^(users|roles)(\/|$)/.test(path))
     return ['ADMIN'];
   if (service === 'cart' && /^admin(\/|$)/.test(path)) return ['ADMIN'];
+  if (service === 'clients' && /^admin(\/|$)/.test(path)) return ['ADMIN'];
+  if (service === 'clients' && /^web\/register$/.test(path)) return ['CUSTOMER', 'ADMIN'];
+  if (service === 'clients' && /^(id\/|integration\/)/.test(path)) return ['ADMIN'];
   if (service === 'cart') return ['CUSTOMER', 'ADMIN'];
   if (service === 'payment') return ['CUSTOMER', 'ADMIN'];
+  if (service === 'catalog' && method.toUpperCase() === 'POST' &&
+      ['atracciones/search', 'observabilidad/eventos'].includes(path)) return undefined;
   if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method.toUpperCase())) {
     if (service === 'inventory' || service === 'catalog')
       return ['PARTNER', 'ADMIN'];

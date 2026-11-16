@@ -1,6 +1,7 @@
 import { Component, DestroyRef, computed, inject, input, signal, untracked, effect } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { Subscription, interval, timeout } from 'rxjs';
 import { AdminSlot } from '../../contracts/admin.contracts';
 import { Atraccion } from '../../contracts/atracciones.contracts';
 import { AdminApiService } from './admin-api.service';
@@ -34,6 +35,9 @@ export class AttractionAvailability {
   }), { available: 0, reserved: 0, soldOut: 0 }));
   readonly scheduleTimes = signal<string[]>([]);
   readonly loading = signal(false);
+  readonly lastUpdated = signal('');
+  readonly syncError = signal('');
+  private request?: Subscription;
   readonly busy = signal(false);
   readonly error = signal('');
   readonly message = signal('');
@@ -46,30 +50,42 @@ export class AttractionAvailability {
     from: new FormControl(localDate(), { nonNullable: true, validators: [Validators.required] }),
     to: new FormControl(localDate(29), { nonNullable: true, validators: [Validators.required] }),
     times: new FormControl('09:00', { nonNullable: true, validators: [Validators.required] }),
-    capacity: new FormControl(20, { nonNullable: true, validators: [Validators.required, Validators.min(1), Validators.max(100000)] }),
+    capacity: new FormControl<number | null>(null, { validators: [Validators.required, Validators.min(1), Validators.max(100000), Validators.pattern(/^[1-9]\d*$/)] }),
   });
 
   constructor() {
+    interval(3000).pipe(takeUntilDestroyed(this.destroy)).subscribe(() => {
+      if (!this.loading() && !this.busy()) this.load(true);
+    });
     effect(() => {
       this.attraction();
+      this.slots.set([]);
+      this.lastUpdated.set('');
       untracked(() => this.load());
     });
   }
 
-  load() {
+  load(automatic = false) {
     const { from, to } = this.filter.getRawValue();
     if (!from || !to || to < from) { this.error.set('Indica un rango de fechas válido.'); return; }
     this.loading.set(true);
-    this.error.set('');
-    this.admin.availability(this.attraction().id, from, to).pipe(takeUntilDestroyed(this.destroy)).subscribe({
+    if (!automatic) this.error.set('');
+    this.request?.unsubscribe();
+    this.request = this.admin.availability(this.attraction().id, from, to).pipe(timeout(10000), takeUntilDestroyed(this.destroy)).subscribe({
       next: (response) => {
+        this.lastUpdated.set(new Date().toLocaleTimeString('es-EC'));
+        this.syncError.set('');
         this.slots.set(response.slots);
         this.scheduleTimes.set(response.schedule_times);
         if (response.schedule_times.length && this.create.controls.times.value === '09:00' && !this.slots().length)
           this.create.controls.times.setValue(response.schedule_times.join('\n'));
         this.loading.set(false);
       },
-      error: (err) => { this.error.set(this.admin.errorMessage(err)); this.loading.set(false); },
+      error: (err) => {
+        this.syncError.set('No se pudo actualizar el stock. Los datos pueden estar desactualizados; se reintentará automáticamente.');
+        if (!automatic) this.error.set(this.admin.errorMessage(err));
+        this.loading.set(false);
+      },
     });
   }
 
@@ -88,7 +104,7 @@ export class AttractionAvailability {
     this.error.set('');
     const value = this.create.getRawValue();
     const times = [...new Set(value.times.split(/[\s,;]+/).map(t => t.trim()).filter(Boolean))];
-    if (this.create.invalid || value.to < value.from) { this.create.markAllAsTouched(); this.error.set('Revisa las fechas y la capacidad.'); return; }
+    if (this.create.invalid || value.capacity === null || value.to < value.from) { this.create.markAllAsTouched(); this.error.set('Revisa las fechas y la capacidad.'); return; }
     if (value.from < this.today) { this.error.set('No se pueden crear cupos en fechas pasadas.'); return; }
     if (!times.length || times.some(t => !/^([01]\d|2[0-3]):[0-5]\d$/.test(t))) { this.error.set('Los horarios deben usar formato HH:MM, uno por línea.'); return; }
     if (!this.weekdays().length) { this.error.set('Selecciona al menos un día de la semana.'); return; }

@@ -1,0 +1,74 @@
+asyncapi: 2.6.0
+info:
+  title: MS Audit Events
+  version: 1.0.0
+  description: Contrato de entrada de eventos publicados en las colas espejo AMQP configuradas en AMQP_AUDIT_QUEUES.
+defaultContentType: application/json
+channels:
+  '{queueName}':
+    description: Cola durable de auditoría espejo configurada en el consumidor.
+    parameters:
+      queueName:
+        description: Nombre de una cola incluida en AMQP_AUDIT_QUEUES.
+        schema:
+          type: string
+    bindings:
+      amqp:
+        is: queue
+        queue:
+          durable: true
+    subscribe:
+      operationId: consumeAuditEvent
+      summary: Consumir y persistir un evento para auditoría
+      message:
+        $ref: '#/components/messages/AuditEnvelope'
+components:
+  messages:
+    AuditEnvelope:
+      name: AuditEnvelope
+      title: Sobre de evento de auditoría
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/AuditEnvelope'
+  schemas:
+    AuditEnvelope:
+      type: object
+      description: >-
+        Se admite el evento directamente o dentro de data. pattern prevalece
+        como event_type sobre data.tipo/tipo. eventoId es opcional si el
+        productor establece messageId AMQP; si ambos faltan, se deriva un
+        identificador SHA-256 del contenido del mensaje.
+      properties:
+        pattern:
+          type: string
+          description: Tipo del patrón NestJS; prevalece sobre tipo.
+        data:
+          type: object
+          additionalProperties: true
+          description: Evento interno cuando el sobre usa el formato NestJS.
+          properties:
+            eventoId:
+              type: string
+            tipo:
+              type: string
+            origen:
+              type: string
+            correlationId:
+              type: string
+            fechaISO:
+              type: string
+              format: date-time
+        eventoId:
+          type: string
+          description: ID usado si no viene dentro de data.
+        tipo:
+          type: string
+          description: Tipo usado si no hay pattern ni data.tipo.
+        origen:
+          type: string
+        correlationId:
+          type: string
+        fechaISO:
+          type: string
+          format: date-time
+      additionalProperties: true

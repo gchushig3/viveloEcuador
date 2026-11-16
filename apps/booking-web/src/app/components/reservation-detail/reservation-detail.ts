@@ -3,13 +3,14 @@ import { DatePipe, CurrencyPipe } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import { AbstractControl, FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Subject, switchMap, catchError, of, tap } from 'rxjs';
+import { Subject, switchMap, catchError, of, tap, interval } from 'rxjs';
 import { ReservationResponse, ComentarioResponse } from '../../contracts/atracciones.contracts';
 import { ReservasService } from '../../services/reservas.service';
 import { ComentariosService } from '../../services/comentarios.service';
 import { AuthService } from '../../services/auth.service';
 import { httpErrorMessage } from '../../core/http-errors';
 import { ReservationQr } from '../reservation-qr/reservation-qr';
+import { canCancelTurn } from '../../core/cancellation-policy';
 
 @Component({ selector: 'app-reservation-detail', imports: [ReactiveFormsModule, DatePipe, CurrencyPipe, ReservationQr], templateUrl: './reservation-detail.html' })
 export class ReservationDetail {
@@ -32,6 +33,15 @@ export class ReservationDetail {
   readonly commentError = signal('');
   readonly success = signal('');
   readonly duplicate = signal(false);
+  private readonly now = signal(Date.now());
+  readonly checkedIn = computed(() => {
+    const res = this.reservation();
+    return !!res && (!!res.checkin_en || ['CHECKED_IN', 'CONFIRMADO_ASISTIDO', 'COMPLETED'].includes(res.status));
+  });
+  readonly canCancel = computed(() => {
+    const res = this.reservation();
+    return !!res && res.status === 'CONFIRMADA' && !this.checkedIn() && canCancelTurn(res.date, res.time, this.now());
+  });
   readonly canComment = computed(() => this.reservation()?.status === 'CONFIRMADA' && !this.duplicate() && !this.comments().some(c => c.reserva_id === this.reservationId()));
   readonly form = new FormGroup({
     puntuacion: new FormControl(5, { nonNullable: true, validators: [Validators.required, Validators.min(1), Validators.max(5), (c: AbstractControl) => Number.isInteger(c.value) ? null : { integer: true }] }),
@@ -40,6 +50,7 @@ export class ReservationDetail {
   private readonly detailRequests = new Subject<string>();
   private readonly commentRequests = new Subject<string>();
   constructor() {
+    interval(1000).pipe(takeUntilDestroyed(this.destroy)).subscribe(() => this.now.set(Date.now()));
     this.detailRequests.pipe(tap(() => { this.loading.set(true); this.error.set(''); this.reservation.set(null); }),
       switchMap(id => this.reservations.obtenerReserva(id).pipe(catchError(err => { this.error.set(this.message(err)); return of(null); }))), takeUntilDestroyed(this.destroy)
     ).subscribe(res => { this.loading.set(false); this.reservation.set(res); if (res) this.loadComments(); });
@@ -49,6 +60,11 @@ export class ReservationDetail {
     effect(() => { const id = this.reservationId(); this.reset(); this.comments.set([]); this.duplicate.set(false); this.detailRequests.next(id); });
   }
   reload() { this.detailRequests.next(this.reservationId()); }
+  requestCancellation() {
+    this.now.set(Date.now());
+    const res = this.reservation();
+    if (res && this.canCancel() && !this.submitting()) this.cancelRequested.emit(res);
+  }
   loadComments() { const res = this.reservation(); if (res) this.commentRequests.next(res.attraction.id); }
   startComment() { if (this.canComment()) { this.commentError.set(''); this.success.set(''); this.writing.set(true); } }
   reset() { this.writing.set(false); this.commentError.set(''); this.success.set(''); this.form.reset({ puntuacion: 5, comentario: '' }); }

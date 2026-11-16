@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, Query } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Param, Query } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   ApiBearerAuth,
@@ -10,6 +10,7 @@ import { In, Repository } from 'typeorm';
 import { AtraccionEntity } from '../../database/entities/atraccion.entity.js';
 import { BookingProfileEntity } from '../../booking/booking-profile.entity.js';
 import { toAttractionResponseDto } from './dto/attraction-response.dto.js';
+import { AttractionsService } from './attractions.service.js';
 
 const STATUSES = ['BORRADOR', 'PUBLICADA', 'INACTIVA'];
 
@@ -20,16 +21,17 @@ const STATUSES = ['BORRADOR', 'PUBLICADA', 'INACTIVA'];
   description:
     'Requiere access JWT, sesion vigente y rol ADMIN validados por Identity.',
 })
-@Controller('atracciones/admin/lista')
+@Controller('atracciones/admin')
 export class AdminListController {
   constructor(
     @InjectRepository(AtraccionEntity)
     private readonly attractions: Repository<AtraccionEntity>,
     @InjectRepository(BookingProfileEntity)
     private readonly profiles: Repository<BookingProfileEntity>,
+    private readonly service: AttractionsService,
   ) {}
 
-  @Get()
+  @Get('lista')
   @ApiOperation({
     summary: 'Listar todas las atracciones (cualquier estado) para el panel',
   })
@@ -112,5 +114,16 @@ export class AdminListController {
         total_pages: Math.max(1, Math.ceil(total / limit)),
       },
     };
+  }
+
+  @Get('detalle/:id')
+  @ApiOperation({ summary: 'Detalle administrativo, incluidos borradores e inactivas' })
+  async detail(@Param('id') id: string) {
+    const item = await this.service.findById(id);
+    const profile = await this.profiles.findOne({ where: { atr_id: item.atr_id } });
+    return { ...toAttractionResponseDto(item), id: item.atr_uuid, atr_id: String(item.atr_id),
+      ...(profile ? { city: profile.payload.city, price: profile.payload.price,
+        inclusions: profile.payload.inclusions, itinerary: profile.payload.itinerary,
+        accessibility: profile.payload.accessibility, permite_paquete: profile.payload.permite_paquete } : {}) };
   }
 }

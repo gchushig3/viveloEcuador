@@ -1,3 +1,4 @@
+import { timer, timeout } from 'rxjs';
 import { DatePipe } from '@angular/common';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -40,14 +41,14 @@ import { AdminCartReservations } from './admin-cart-reservations';
                   <td class="p-3">{{ item.atraccion }}</td>
                   <td class="p-3">{{ item.fecha }} {{ item.hora }}</td>
                   <td class="p-3">{{ item.personas }}</td>
-                  <td class="p-3"><span class="rounded-full px-3 py-1 text-xs font-bold" [class]="item.estado === 'CONFIRMADA' ? 'bg-emerald-100 text-emerald-900' : 'bg-stone-200 text-stone-700'">{{ item.estado === 'CONFIRMADA' ? (item.checkin_en ? 'CONFIRMADO_ASISTIDO' : 'PENDIENTE_ASISTENCIA') : item.estado }}</span></td>
+                  <td class="p-3"><span class="rounded-full px-3 py-1 text-xs font-bold" [class]="['CONFIRMADA','PENDIENTE'].includes(item.estado) ? 'bg-emerald-100 text-emerald-900' : 'bg-stone-200 text-stone-700'">{{ item.estado === 'CONFIRMADA' ? (item.checkin_en ? 'CONFIRMADO_ASISTIDO' : 'PENDIENTE_ASISTENCIA') : item.estado === 'PENDIENTE' ? 'PENDIENTE_PAGO' : item.estado }}</span></td>
                   <td class="p-3">{{ item.creada_en | date:'short' }}</td>
                   <td class="p-3 text-right"><button type="button" (click)="toggleDetail(item)" class="rounded-lg border px-3 py-1 font-semibold">{{ selected()?.reserva_id === item.reserva_id ? 'Cerrar' : 'Detalle' }}</button></td>
                 </tr>
                 @if (selected()?.reserva_id === item.reserva_id) {
                   <tr class="bg-stone-50"><td colspan="7" class="p-4">
                     <p class="text-xs text-slate-600">Código: <span class="font-mono">{{ item.reserva_id }}</span></p>
-                    @if (item.estado === 'CONFIRMADA') {
+                    @if (item.estado === 'CONFIRMADA' || item.estado === 'PENDIENTE') {
                       @if (item.checkin_en) {
                         <p class="mt-3 text-sm font-semibold text-emerald-800">Asistencia confirmada ({{ item.asistentes_reales }} persona(s)) · {{ item.checkin_en | date:'short' }} ·
                           {{ item.booking_notificado ? 'Booking notificado' : 'Booking pendiente de notificar' }}</p>
@@ -66,7 +67,9 @@ import { AdminCartReservations } from './admin-cart-reservations';
                         </div>
                       }
                     }
-                    @if (item.estado !== 'CANCELADA') {
+                    @if (item.checkin_en) {
+                      <p class="mt-2 text-sm font-semibold text-teal-800">Check-in realizado (Servicio iniciado, no cancelable)</p>
+                    } @else if (item.estado !== 'CANCELADA') {
                       @if (confirmingCancel()) {
                         <p class="mt-3 text-sm">¿Cancelar la reserva de <span class="font-semibold">{{ item.cliente_nombre }}</span>? Esta acción no se puede deshacer.</p>
                         <div class="mt-3 flex gap-2">
@@ -115,23 +118,30 @@ export class AdminReservations {
   readonly guia = signal('');
   private readonly limit = 10;
 
-  constructor() { this.load(); }
+  constructor() {
+    this.load();
+    timer(5000, 5000).pipe(takeUntilDestroyed(this.destroy)).subscribe(() => {
+      if (!this.checkingIn() && !this.cancelling()) this.load(true);
+    });
+  }
 
-  load() {
-    if (this.loading()) return;
-    this.loading.set(true);
+  private inFlight = false;
+  load(silent = false) {
+    if (this.inFlight) return;
+    this.inFlight = true;
+    if (!silent) this.loading.set(true);
     this.error.set('');
     this.api.reservations({
       page: this.page(), limit: this.limit, estado: this.estado(), q: this.q(),
       fecha_desde: this.desde(), fecha_hasta: this.hasta(),
-    }).pipe(takeUntilDestroyed(this.destroy)).subscribe({
+    }).pipe(timeout(10000), takeUntilDestroyed(this.destroy)).subscribe({
       next: (response) => {
         this.rows.set(response.items);
         this.total.set(response.total);
         this.lastPage.set(response.total_pages);
-        this.loading.set(false);
+        this.loading.set(false); this.inFlight = false;
       },
-      error: (err) => { this.error.set(this.api.errorMessage(err)); this.loading.set(false); },
+      error: (err) => { this.error.set(this.api.errorMessage(err)); this.loading.set(false); this.inFlight = false; },
     });
   }
 

@@ -98,10 +98,10 @@ export class InventoryAdminService implements OnApplicationShutdown {
     return metadata;
   }
 
-  private async call<T>(operation: string, run: () => Observable<T>): Promise<T> {
+  private async call<T>(operation: string, run: () => Observable<T>, timeoutMs = 8000): Promise<T> {
     this.logger.log({ event: 'grpc_inventario_emitido', operation });
     try {
-      const result = await firstValueFrom(run().pipe(timeout(8000)));
+      const result = await firstValueFrom(run().pipe(timeout(timeoutMs)));
       this.logger.log({ event: 'grpc_inventario_completado', operation });
       return result;
     } catch (error) {
@@ -162,7 +162,7 @@ export class InventoryAdminService implements OnApplicationShutdown {
     timeSlots: string[];
     capacity: number;
   }) {
-    return this.call('RegisterSlots', () => this.api.registerSlots(input, this.metadata()));
+    return this.call('RegisterSlots', () => this.api.registerSlots(input, this.metadata()), 25000);
   }
 
   update(input: {

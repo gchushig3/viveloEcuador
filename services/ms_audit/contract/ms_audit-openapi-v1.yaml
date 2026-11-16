@@ -1,0 +1,126 @@
+openapi: 3.0.3
+info:
+  title: MS Audit API
+  version: 1.0.0
+  description: >-
+    Contrato HTTP de consulta del historial de auditoría. Los eventos se reciben
+    por colas AMQP espejo; ese contrato de mensajería se describe en README.md.
+servers:
+  - url: /
+tags:
+  - name: Audit
+  - name: Health
+paths:
+  /api/v2/audit/events:
+    get:
+      operationId: listAuditEvents
+      summary: Consultar eventos de auditoría
+      description: >-
+        Retorna eventos en orden descendente por fecha. La consulta requiere un
+        access token válido y el rol ADMIN. El límite predeterminado es 100 y
+        el máximo aplicado por el servicio es 200.
+      tags: [Audit]
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: correlationId
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 128
+        - name: eventType
+          in: query
+          required: false
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 80
+        - name: limit
+          in: query
+          required: false
+          description: Entero positivo de hasta tres dígitos; se limita a 200.
+          schema:
+            type: string
+            pattern: '^[1-9][0-9]{0,2}$'
+            default: '100'
+      responses:
+        '200':
+          description: Eventos encontrados; el arreglo puede estar vacío.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditEvent'
+        '400':
+          description: Parámetros de consulta inválidos.
+        '401':
+          description: Token ausente, inválido o sesión no válida.
+        '403':
+          description: El usuario no tiene el rol ADMIN.
+        '503':
+          description: Servicio de identidad no disponible.
+  /api/v2/health:
+    get:
+      operationId: checkAuditHealth
+      summary: Comprobar disponibilidad del servicio
+      description: Comprueba que el proceso HTTP responde; no valida base de datos ni AMQP.
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: Servicio activo.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, service]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+                  service:
+                    type: string
+                    enum: [ms_audit]
+              example:
+                status: ok
+                service: ms_audit
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    AuditEvent:
+      type: object
+      required:
+        - event_id
+        - correlation_id
+        - service
+        - event_type
+        - payload
+        - event_timestamp
+        - source_queue
+      properties:
+        event_id:
+          type: string
+          description: Identificador idempotente del evento.
+        correlation_id:
+          type: string
+        service:
+          type: string
+          description: Servicio de origen; unknown si el mensaje no lo especificó.
+        event_type:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+          description: Sobre AMQP original almacenado sin transformación.
+        event_timestamp:
+          type: string
+          format: date-time
+        source_queue:
+          type: string

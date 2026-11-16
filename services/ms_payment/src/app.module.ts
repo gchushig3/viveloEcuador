@@ -12,6 +12,7 @@ import { ApiExceptionFilter } from './common/api-exception.filter.js';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
+import { HealthController } from './health.controller.js';
 import { MetodoPagoModule } from './metodo_pago/metodo_pago.module.js';
 import { EstadoModule } from './estado/estado.module.js';
 import { PagoModule } from './pago/pago.module.js';
@@ -67,7 +68,7 @@ import { validateEnvironment } from './config/env.validation.js';
     PagoTransferenciaModule,
     SagaRuntimeModule.forService('ms_payment'),
   ],
-  controllers: [AppController, PaymentSagaController],
+  controllers: [AppController, PaymentSagaController, HealthController],
   providers: [
     AppService,
     PaymentSagaService,

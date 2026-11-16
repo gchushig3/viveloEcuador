@@ -9,6 +9,10 @@ import type {
 } from '@nestjs/swagger';
 import { readFile } from 'node:fs/promises';
 import { HealthController } from '../../src/health/health.controller.js';
+import { BookingCancellationController, BookingCancellationAliasController } from '../../src/modules/attractions/booking-contract.controller.js';
+import { BookingReservationsService } from '../../src/booking/booking-reservations.service.js';
+import { DataSource } from 'typeorm';
+import { ConfigService } from '@nestjs/config';
 import 'reflect-metadata';
 import { afterAll, beforeAll, describe, expect, it, jest } from '@jest/globals';
 import type { INestApplication } from '@nestjs/common';
@@ -244,6 +248,8 @@ describe('API REST /api/v2 (E2E HTTP)', () => {
     const module = await Test.createTestingModule({
       controllers: [
         HealthController,
+        BookingCancellationController,
+        BookingCancellationAliasController,
         CategoriesController,
         LanguagesController,
         InclusionsController,
@@ -251,6 +257,9 @@ describe('API REST /api/v2 (E2E HTTP)', () => {
         AttractionsController,
       ],
       providers: [
+        { provide: BookingReservationsService, useValue: {} },
+        { provide: DataSource, useValue: { query: async () => [] } },
+        { provide: ConfigService, useValue: new ConfigService() },
         { provide: BookingCatalogService, useValue: mockBooking },
         {
           provide: CatalogEventsService,
@@ -446,7 +455,7 @@ describe('API REST /api/v2 (E2E HTTP)', () => {
 
   it('documenta exactamente las rutas existentes bajo /api/v2 con IDs de operación ?nicos', () => {
     const all = operations();
-    expect(all).toHaveLength(39);
+    expect(all).toHaveLength(41);
     expect(new Set(all.map((operation) => operation.operationId)).size).toBe(
       all.length,
     );

@@ -8,7 +8,6 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test",
     "test:admin-v2": "node e2e/admin-v2.cjs",
-    "test:admin-v2": "node e2e/admin-v2.cjs",
     "test:integrated": "node e2e/integrated.cjs",
     "test:admin-observability": "node e2e/admin-observability.cjs",
     "test:admin-creation": "node e2e/admin-creation.cjs",

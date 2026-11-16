@@ -6,8 +6,11 @@ export interface GatewayEnvironment {
   BOOKING_URL: string;
   CATALOG_URL: string;
   INVENTORY_URL: string;
+  INVENTORY_GRPC_HEALTH_URL?: string;
+  INVENTORY_GRPC_HEALTH_TLS?: boolean;
   PAYMENT_URL: string;
   AUDIT_URL: string;
+  CLIENTS_URL: string;
   IDENTITY_API_PREFIX: string;
   CART_API_PREFIX: string;
   BOOKING_API_PREFIX: string;
@@ -15,6 +18,8 @@ export interface GatewayEnvironment {
   INVENTORY_API_PREFIX: string;
   PAYMENT_API_PREFIX: string;
   AUDIT_API_PREFIX: string;
+  CLIENTS_API_PREFIX: string;
+  IDENTITY_ADMIN_API_PREFIX: string;
   JWT_JWKS_URL: string;
   JWT_PUBLIC_KEY?: string;
   JWT_ISSUER: string;
@@ -31,4 +36,5 @@ export interface GatewayEnvironment {
   HEALTH_CATALOG_PATH: string;
   HEALTH_INVENTORY_PATH: string;
   HEALTH_PAYMENT_PATH: string;
+  HEALTH_CLIENTS_PATH: string;
 }

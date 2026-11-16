@@ -76,25 +76,29 @@
           }
           <form class="mt-5 space-y-3 border-t pt-5" (submit)="$event.preventDefault(); reserve(item)" aria-label="Reservar">
             <label class="block text-sm font-semibold">Fecha
-              <input type="date" name="fecha" required [min]="minDate" [max]="maxDate" [value]="date()" (input)="date.set($any($event.target).value)" class="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2">
+              <input [attr.aria-invalid]="!!dateError()" type="date" name="fecha" required [min]="minDate" [max]="maxDate" [value]="date()" (input)="date.set($any($event.target).value)" class="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2">
             </label>
             <label class="block text-sm font-semibold">Horario
               <select name="hora" [value]="time()" (change)="time.set($any($event.target).value)" class="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2">
-                @for (t of times; track t) { <option [value]="t" [selected]="t === time()">{{ t }}</option> }
+                @for (slot of slots(); track slot.hora) { <option [value]="slot.hora" [selected]="slot.hora === time()" [disabled]="!futureTurn(slot.hora) || slot.available_spots < adults() + children()">{{ slot.hora }} · {{ !futureTurn(slot.hora) ? 'HORARIO FINALIZADO' : slot.available_spots === 0 ? 'AGOTADO' : slot.available_spots + ' cupos disponibles' }}</option> }
               </select>
             </label>
             <div class="flex items-center justify-between text-sm">
               <span class="font-semibold">Adultos</span>
-              <span class="flex items-center gap-3"><button type="button" aria-label="Menos adultos" (click)="change('adults', -1)" class="h-8 w-8 rounded-full border">−</button><output>{{ adults() }}</output><button type="button" aria-label="Más adultos" (click)="change('adults', 1)" class="h-8 w-8 rounded-full border">+</button></span>
+              <span class="flex items-center gap-3"><button type="button" aria-label="Menos adultos" [disabled]="adults() <= 1" (click)="change('adults', -1)" class="h-8 w-8 rounded-full border disabled:cursor-not-allowed disabled:opacity-40">−</button><output>{{ adults() }}</output><button type="button" aria-label="Más adultos" [disabled]="adults() >= 20" (click)="change('adults', 1)" class="h-8 w-8 rounded-full border disabled:cursor-not-allowed disabled:opacity-40">+</button></span>
             </div>
             <div class="flex items-center justify-between text-sm">
               <span class="font-semibold">Niños</span>
-              <span class="flex items-center gap-3"><button type="button" aria-label="Menos niños" (click)="change('children', -1)" class="h-8 w-8 rounded-full border">−</button><output>{{ children() }}</output><button type="button" aria-label="Más niños" (click)="change('children', 1)" class="h-8 w-8 rounded-full border">+</button></span>
+              <span class="flex items-center gap-3"><button type="button" aria-label="Menos niños" [disabled]="children() <= 0" (click)="change('children', -1)" class="h-8 w-8 rounded-full border disabled:cursor-not-allowed disabled:opacity-40">−</button><output>{{ children() }}</output><button type="button" aria-label="Más niños" [disabled]="children() >= 20" (click)="change('children', 1)" class="h-8 w-8 rounded-full border disabled:cursor-not-allowed disabled:opacity-40">+</button></span>
             </div>
             @if (item.bookingPrice; as price) {
               <p class="flex justify-between border-t pt-3 text-lg font-black"><span>Total</span><span>{{ total() | currency:price.currency }}</span></p>
             }
-            <button type="submit" class="block w-full rounded-xl bg-teal-700 px-4 py-3 text-center font-semibold text-white hover:bg-teal-800">Reservar</button>
+            <p class="text-sm text-slate-600">Stock en vivo · actualización automática</p>
+            @if (dateError()) { <p role="alert" class="text-sm text-red-700">{{ dateError() }}</p> }
+            @if (stockError() && !dateError()) { <p role="status" class="text-sm text-amber-800">{{ stockError() }}</p> }
+            @if (!stockError() && !canReserve()) { <p role="status" class="text-sm text-amber-800">Selecciona un horario con cupos suficientes.</p> }
+            <button type="submit" [disabled]="!canReserve()" class="disabled:opacity-50 block w-full rounded-xl bg-teal-700 px-4 py-3 text-center font-semibold text-white hover:bg-teal-800">Reservar</button>
           </form>
           @if (item.free_cancellation) { <p class="mt-4 text-center text-sm text-emerald-800">Cancelación gratuita hasta {{ item.cancellationHours ?? 24 }} horas antes</p> }
           @if (item.accessibility; as accessibility) {

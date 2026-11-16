@@ -1,7 +1,9 @@
 import { DatePipe } from '@angular/common';
-import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { RouterLink } from '@angular/router';
+import { catchError, forkJoin, of, timer, timeout } from 'rxjs';
+import { CartService, Reservation } from '../../services/cart.service';
 import { AdminSummary } from '../../contracts/admin.contracts';
 import { AdminApiService } from './admin-api.service';
 
@@ -19,7 +21,8 @@ import { AdminApiService } from './admin-api.service';
         <a routerLink="/admin/usuarios" class="rounded-xl border border-teal-500 px-4 py-3 text-sm font-semibold">Crear administrador</a>
         <a routerLink="/admin/reservas" class="rounded-xl border border-teal-500 px-4 py-3 text-sm font-semibold">Reservas del sitio y Booking</a>
       </div>
-      <p class="mt-4 text-sm text-slate-600">Las cifras de reservas de este resumen corresponden al socio Booking. Consulta las reservas del sitio en Reservas.</p>
+      <p class="mt-4 text-sm text-slate-600">Booking y tienda web Vívelo Ecuador · actualización automática cada 5 segundos.</p>
+      @if (lastUpdate()) { <p class="mt-1 text-xs text-slate-500">Última consulta: {{ lastUpdate() | date:'mediumTime' }}</p> }
       @if (loading() && !summary()) { <p role="status" class="my-8 text-center text-slate-600">Cargando resumen...</p> }
       @if (error()) { <p role="alert" class="mt-4 rounded-xl bg-red-50 p-4 text-sm text-red-800">{{ error() }}</p> }
       @if (summary(); as s) {
@@ -33,7 +36,7 @@ import { AdminApiService } from './admin-api.service';
         </div>
         <div class="mt-6 grid gap-6 lg:grid-cols-2">
           <section class="rounded-2xl border border-stone-200 bg-white p-5" aria-labelledby="top-title">
-            <h3 id="top-title" class="font-bold">Atracciones más reservadas</h3>
+            <h3 id="top-title" class="font-bold">Atracciones más reservadas en Booking</h3>
             @if (!s.top_atracciones.length) { <p class="mt-3 text-sm text-slate-600">Aún no hay reservas confirmadas.</p> }
             <ol class="mt-3 divide-y divide-stone-100">
               @for (item of s.top_atracciones; track item.atraccion_id) {
@@ -45,8 +48,8 @@ import { AdminApiService } from './admin-api.service';
             <div class="flex items-center justify-between"><h3 id="recent-title" class="font-bold">Reservas recientes</h3><a routerLink="/admin/reservas" class="text-sm font-semibold text-teal-800">Ver todas</a></div>
             @if (!s.recientes.length) { <p class="mt-3 text-sm text-slate-600">Aún no hay reservas.</p> }
             <ul class="mt-3 divide-y divide-stone-100">
-              @for (item of s.recientes; track item.reserva_id) {
-                <li class="py-2 text-sm"><p class="font-semibold">{{ item.atraccion }} · {{ item.estado }}</p><p class="text-slate-600">{{ item.cliente_nombre }} · {{ item.fecha }} {{ item.hora }} · {{ item.creada_en | date:'short' }}</p></li>
+              @for (item of s.recientes; track item.origen + ':' + item.reserva_id) {
+                <li class="py-2 text-sm"><p class="font-semibold">{{ item.origen }} · {{ item.atraccion }} · {{ item.estado }}</p><p class="text-slate-600">{{ item.cliente_nombre }} · {{ item.fecha }} {{ item.hora }} · {{ item.creada_en | date:'short' }}</p></li>
               }
             </ul>
           </section>
@@ -57,25 +60,59 @@ import { AdminApiService } from './admin-api.service';
 })
 export class AdminDashboard {
   private readonly api = inject(AdminApiService);
+  private readonly cart = inject(CartService);
   private readonly destroy = inject(DestroyRef);
-  readonly summary = signal<AdminSummary | null>(null);
+  private readonly booking = signal<AdminSummary | null>(null);
+  private readonly web = signal<Pick<AdminSummary, 'reservas'> | null>(null);
+  readonly localRows = signal<Array<Reservation & { userId: string }>>([]);
+  readonly lastUpdate = signal<string | null>(null);
+  readonly summary = computed(() => {
+    if (!this.booking() && !this.web()) return null;
+    const booking = this.booking() ?? {
+      reservas: { total: 0, confirmadas: 0, canceladas: 0, hoy: 0, proximas: 0, ultimas_24h: 0, personas_proximas: 0 },
+      atracciones: { total: 0, publicadas: 0, borradores: 0, inactivas: 0 },
+      top_atracciones: [], recientes: [],
+    } as AdminSummary;
+    const counts = { ...booking.reservas };
+    const web = this.web();
+    if (web) for (const key of Object.keys(counts) as Array<keyof typeof counts>) counts[key] += web.reservas[key];
+    const recent = [
+      ...booking.recientes.map(item => ({ ...item, origen: 'Booking' })),
+      ...this.localRows().map(row => ({
+        reserva_id: row.reservationId, origen: 'Vívelo Ecuador', estado: row.checkin_en ? 'ASISTIDO' : row.state,
+        atraccion: row.payload.lines.map(line => `Atracción ${line.attractionId}`).join(', '),
+        cliente_nombre: `Usuario ${row.userId}`, fecha: row.payload.lines[0]?.date ?? '',
+        hora: row.payload.lines[0]?.timeSlot ?? '', creada_en: row.createdAt ?? '',
+      })),
+    ].sort((a, b) => Date.parse(b.creada_en) - Date.parse(a.creada_en)).slice(0, 5);
+    return { ...booking, reservas: counts, recientes: recent };
+
+  });
   readonly usersTotal = signal<number | null>(null);
   readonly loading = signal(false);
   readonly error = signal('');
 
-  constructor() { this.load(); }
+  constructor() {
+    this.load();
+    timer(5000, 5000).pipe(takeUntilDestroyed(this.destroy)).subscribe(() => this.load());
+  }
 
   load() {
     if (this.loading()) return;
     this.loading.set(true);
-    this.error.set('');
-    this.api.summary().pipe(takeUntilDestroyed(this.destroy)).subscribe({
-      next: (summary) => { this.summary.set(summary); this.loading.set(false); },
-      error: (err) => { this.error.set(this.api.errorMessage(err)); this.loading.set(false); },
-    });
-    this.api.users(1, 1).pipe(takeUntilDestroyed(this.destroy)).subscribe({
-      next: (page) => this.usersTotal.set(page.total),
-      error: () => this.usersTotal.set(null),
+    const errors: string[] = [];
+    const safe = <T>(source: import('rxjs').Observable<T>, label: string) => source.pipe(timeout(10000),
+      catchError(err => { errors.push(`${label}: ${this.api.errorMessage(err)}`); return of(null); }));
+    forkJoin({
+      booking: safe(this.api.summary(), 'Booking'), web: safe(this.cart.adminSummary(), 'Resumen web'),
+      recent: safe(this.cart.adminList(), 'Reservas web'), users: safe(this.api.users(1, 1), 'Usuarios'),
+    }).pipe(takeUntilDestroyed(this.destroy)).subscribe(result => {
+      if (result.booking) this.booking.set(result.booking);
+      if (result.web) this.web.set(result.web);
+      if (result.recent) this.localRows.set(result.recent);
+      this.usersTotal.set(result.users?.total ?? null);
+      this.error.set(errors.length ? 'Datos incompletos o sin actualizar. ' + errors.join(' · ') : '');
+      this.lastUpdate.set(new Date().toISOString()); this.loading.set(false);
     });
   }
 }

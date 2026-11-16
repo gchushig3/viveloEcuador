@@ -250,8 +250,19 @@ export class AtraccionesService {
     return this.http.get<AttractionCategory[]>(`${this.endpoint}/categorias`);
   }
 
+  disponibilidad(id: string, fecha: string): Observable<{ horarios: { hora: string; disponible: boolean; available_spots: number; status: string }[] }> {
+    return this.http.get<{ horarios: { hora: string; disponible: boolean; available_spots: number; status: string }[] }>(
+      `${this.endpoint}/${encodeURIComponent(id)}/disponibilidad`, { params: { fecha } }).pipe(
+        map(result => ({ horarios: result.horarios.map(slot => ({ ...slot, hora: slot.hora.slice(0, 5) })) })));
+  }
+
   obtenerAtraccion(id: string): Observable<Atraccion> {
     return this.http.get<ApiAttraction>(`${this.endpoint}/${encodeURIComponent(id)}`)
+      .pipe(map(attractionFromApi));
+  }
+
+  obtenerAtraccionAdmin(id: string): Observable<Atraccion> {
+    return this.http.get<ApiAttraction>(`${this.endpoint}/admin/detalle/${encodeURIComponent(id)}`)
       .pipe(map(attractionFromApi));
   }
 

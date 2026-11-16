@@ -23,3 +23,34 @@ Checkout conserva la clave de idempotencia al reintentar dentro de la pantalla. 
 - Las pruebas reales de base de datos, HTTP, gRPC, cupos, pagos, reembolsos y AMQPS est?n en `../services/saga-tests/`.
 
 No se public? ni se cambi? la configuraci?n de servicios remotos. Revisa `../VALIDACION-ADMIN-BOOKING.md` para el alcance y los resultados.
+
+## Panel: reservas, clientes y saga
+
+El resumen suma los contadores completos de Booking y Cart (no solo sus ultimas
+100 reservas). Presenta las cinco reservas mas recientes entre ambos canales,
+con su origen. El ranking de atracciones se identifica explicitamente como Booking.
+Resumen y reservas consultan los servicios cada 5 segundos sin desmontar las filas.
+Clientes actualiza su directorio cada 10 segundos.
+
+Clientes combina perfiles de ms-cliente y cuentas Identity con rol CLIENTE,
+unidos por correo normalizado antes de filtrar y paginar. Una cuenta nueva sin
+compras se muestra como cliente web con documento pendiente; no se crea un perfil
+ficticio ni se inventa una fecha de registro. Historial conserva las reservas Booking
+y consulta las compras web por el identificador de usuario cuando existe.
+
+En Administracion > Reservas > Reservas de clientes del sitio, Ver saga muestra
+el estado actual confirmado de pago, inventario y, si corresponde, reembolso y
+restitucion de cupos. No es una cronologia de eventos ni la telemetria de
+Observabilidad. El mismo listado permite check-in para reservas confirmadas,
+pagadas y sin cancelacion en curso, verificando documento del titular y guia.
+
+Para publicar estas mejoras se requieren el frontend y ms-cart actualizados.
+ms-cart debe recibir CLIENT_SERVICE_URL con la URL interna de ms-cliente.
+
+## Publicacion compatible con pestanas abiertas
+
+Despues del build de produccion, publicar con
+`infrastructure/deployment/azure/deploy-frontend.ps1 -Version <version-unica>`.
+Este script conserva archivos JS/CSS inmutables anteriores para que una pestana
+abierta pueda seguir cargando la pantalla de pago despues de un despliegue.
+Ver `docs/operations/FIX-RESERVAR-ASSETS-2026-11-13.md` desde la raiz del repositorio.

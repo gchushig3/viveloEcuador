@@ -18,6 +18,7 @@ export const routes: Routes = [
     { path: 'usuarios', canActivate: [adminGuard], loadComponent: () => import('./features/admin/admin-users').then(m => m.AdminUsers) },
     { path: 'atracciones', canActivate: [adminGuard], loadComponent: () => import('./features/admin/admin-attractions').then(m => m.AdminAttractions) },
     { path: 'reservas', canActivate: [adminGuard], loadComponent: () => import('./features/admin/admin-reservations').then(m => m.AdminReservations) },
+    { path: 'clientes', canActivate: [adminGuard], loadComponent: () => import('./features/admin/admin-clients').then(m => m.AdminClients) },
     { path: 'observabilidad', canActivate: [adminGuard], loadComponent: () => import('./features/admin/admin-observability').then(m => m.AdminObservability) },
   ] },
   { path: 'observabilidad', pathMatch: 'full', redirectTo: 'admin/observabilidad' },

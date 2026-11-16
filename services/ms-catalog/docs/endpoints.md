@@ -5,6 +5,8 @@ Generada con `npm run openapi:export`. Administracion: JWT, sesion vigente y rol
 | Método | Ruta                                       | Acceso      | Respuestas documentadas           |
 | ------ | ------------------------------------------ | ----------- | --------------------------------- |
 | GET    | `/api/v2/health/live`                      | Público     | 200                               |
+| POST   | `/api/v2/atracciones/reservas/{id}/cancel` | Público     | 200, 400, 409, 500                |
+| POST   | `/api/v2/reservas/{id}/cancel`             | Público     | 200, 400, 409, 500                |
 | GET    | `/api/v2/atracciones/categorias/arbol`     | Público     | 200, 500, 503                     |
 | GET    | `/api/v2/atracciones/categorias`           | Público     | 200, 400, 500, 503                |
 | POST   | `/api/v2/atracciones/categorias`           | JWT / ADMIN | 201, 400, 401, 403, 409, 503      |

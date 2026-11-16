@@ -23,7 +23,17 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Microservicio que administra el carrito del usuario y coordina reservas mediante
+una saga. La API HTTP usa el prefijo `/api/v2`, requiere access JWT y limita las
+operaciones de usuario al propietario del token. Las rutas administrativas
+requieren además el rol `ADMIN`.
+
+## Contrato
+
+El contrato OpenAPI 3.0 está en
+[`contract/ms_cart-openapi-v1.yaml`](contract/ms_cart-openapi-v1.yaml). Documenta
+las rutas HTTP, cuerpos, respuestas, autenticación y el header
+`Idempotency-Key` requerido para agregar artículos e iniciar checkout.
 
 ## Project setup
 
@@ -130,3 +140,18 @@ Nest is an MIT-licensed open source project. It can grow thanks to the sponsors 
 ## License
 
 Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+
+## Administracion y asistencia web
+
+- GET /api/v2/cart/admin/summary: contadores de todas las reservas web, no limitados a las 100 filas del listado reciente. Fechas en America/Guayaquil.
+- GET /api/v2/cart/admin/customers: cuentas con al menos un pago completado; las cancelaciones posteriores siguen contando como clientes.
+- POST /api/v2/cart/admin/reservations/:id/checkin: requiere ADMIN, documento_identidad (10 o 13 digitos), guia_codigo y opcionalmente asistentes_reales (1..personas reservadas).
+- CLIENT_SERVICE_URL apunta a ms-cliente, por ejemplo http://localhost:3018/api/v2/clientes. La consulta interna confirma que el documento pertenece al usuario de la reserva.
+
+La asistencia se persiste como recibo checkin:<reservationId> en saga_http_request,
+con fecha, administrador, guia y asistentes. Reintentos devuelven el recibo original.
+No modifica el estado de la saga de compra: CONFIRMED sigue significando pago e
+inventario confirmados. Los listados y el detalle exponen checkin_en y checkin;
+la asistencia impide cancelar. Check-in y solicitud de cancelacion bloquean la
+misma fila de reserva para excluir operaciones concurrentes incompatibles.
+No se requieren migraciones de esquema adicionales.

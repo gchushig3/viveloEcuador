@@ -1,0 +1,323 @@
+openapi: 3.0.3
+info:
+  title: MS Support API
+  version: 1.0.0
+  description: |
+    Contrato REST de MS Support para registrar y administrar mensajes de
+    contacto. La creacion requiere un JWT valido; consultar, marcar como leido
+    y eliminar mensajes requiere el rol ADMIN.
+servers:
+  - url: http://localhost:3000/api/v2
+    description: Desarrollo local; el puerto puede configurarse con PORT.
+security:
+  - BearerAuth: []
+tags:
+  - name: Mensajes
+    description: Mensajes de contacto y soporte
+  - name: Salud
+    description: Estado del servicio
+paths:
+  /support/messages:
+    post:
+      tags: [Mensajes]
+      operationId: crearMensaje
+      summary: Crear un mensaje de contacto
+      description: Requiere un JWT Bearer valido. Cualquier usuario autenticado puede crear un mensaje.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearMensajeRequest'
+      responses:
+        '201':
+          description: Mensaje creado
+          headers:
+            Location:
+              description: Ruta relativa del mensaje creado
+              schema:
+                type: string
+                example: /api/v2/support/messages/5
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Mensaje'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/IdentityUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    get:
+      tags: [Mensajes]
+      operationId: listarMensajes
+      summary: Listar mensajes de contacto
+      description: Requiere JWT Bearer con rol ADMIN. El resultado se ordena por men_id ascendente.
+      parameters:
+        - name: leido
+          in: query
+          required: false
+          description: Filtra por estado de lectura; si se omite, devuelve todos los mensajes.
+          schema:
+            type: string
+            enum: ['true', 'false']
+      responses:
+        '200':
+          description: Mensajes de contacto
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Mensaje'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '503':
+          $ref: '#/components/responses/IdentityUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /support/messages/{id}:
+    get:
+      tags: [Mensajes]
+      operationId: obtenerMensaje
+      summary: Obtener un mensaje por identificador
+      description: Requiere JWT Bearer con rol ADMIN.
+      parameters:
+        - $ref: '#/components/parameters/MessageId'
+      responses:
+        '200':
+          description: Mensaje encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Mensaje'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/IdentityUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      tags: [Mensajes]
+      operationId: marcarMensajeLeido
+      summary: Cambiar el estado de lectura de un mensaje
+      description: Requiere JWT Bearer con rol ADMIN.
+      parameters:
+        - $ref: '#/components/parameters/MessageId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarcarLeidoRequest'
+      responses:
+        '200':
+          description: Mensaje actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Mensaje'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/IdentityUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    delete:
+      tags: [Mensajes]
+      operationId: eliminarMensaje
+      summary: Eliminar un mensaje
+      description: Requiere JWT Bearer con rol ADMIN.
+      parameters:
+        - $ref: '#/components/parameters/MessageId'
+      responses:
+        '204':
+          description: Mensaje eliminado; sin cuerpo de respuesta
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          $ref: '#/components/responses/IdentityUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /health:
+    get:
+      tags: [Salud]
+      operationId: healthCheck
+      summary: Consultar el estado del servicio
+      security: []
+      responses:
+        '200':
+          description: Resultado del chequeo de salud
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResult'
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT validado por el endpoint de introspeccion de Identity.
+  parameters:
+    MessageId:
+      name: id
+      in: path
+      required: true
+      description: Identificador bigint positivo del mensaje
+      schema:
+        $ref: '#/components/schemas/BigId'
+  responses:
+    BadRequest:
+      description: Parametro, ruta o cuerpo invalido
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: JWT ausente o sesion invalida
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: El JWT no tiene el rol ADMIN
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: El mensaje no existe
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    IdentityUnavailable:
+      description: No fue posible validar la sesion con Identity
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalServerError:
+      description: Error inesperado del servicio o de la persistencia
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    CrearMensajeRequest:
+      type: object
+      additionalProperties: false
+      required: [men_nombre, men_correo, men_asunto, men_cuerpo]
+      properties:
+        men_nombre:
+          type: string
+          minLength: 1
+          maxLength: 120
+        men_correo:
+          type: string
+          format: email
+          maxLength: 160
+        men_asunto:
+          type: string
+          minLength: 1
+          maxLength: 30
+        men_cuerpo:
+          type: string
+          minLength: 1
+          maxLength: 2000
+    MarcarLeidoRequest:
+      type: object
+      additionalProperties: false
+      required: [men_leido]
+      properties:
+        men_leido:
+          type: boolean
+    Mensaje:
+      type: object
+      required:
+        - men_id
+        - men_nombre
+        - men_correo
+        - men_asunto
+        - men_cuerpo
+        - men_leido
+        - men_creado_en
+      properties:
+        men_id:
+          $ref: '#/components/schemas/BigId'
+        men_nombre:
+          type: string
+          maxLength: 120
+        men_correo:
+          type: string
+          format: email
+          maxLength: 160
+        men_asunto:
+          type: string
+          maxLength: 30
+        men_cuerpo:
+          type: string
+          maxLength: 2000
+        men_leido:
+          type: boolean
+        men_creado_en:
+          type: string
+          format: date-time
+    BigId:
+      type: string
+      pattern: '^[1-9][0-9]{0,18}$'
+    HealthResult:
+      type: object
+      required: [status, details]
+      properties:
+        status:
+          type: string
+          enum: [ok, error]
+        info:
+          type: object
+          additionalProperties: true
+        error:
+          type: object
+          additionalProperties: true
+        details:
+          type: object
+          additionalProperties: true
+    Error:
+      type: object
+      description: Cuerpo de error HTTP NestJS
+      properties:
+        statusCode:
+          type: integer
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        error:
+          type: string

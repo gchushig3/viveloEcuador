@@ -39,6 +39,362 @@ paths:
       tags:
         - Health
       security: []
+  /api/v2/atracciones/reservas/{id}/cancel:
+    post:
+      operationId: BookingCancellationController_cancelReservation
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: Idempotency-Key
+          required: false
+          in: header
+          schema:
+            type: string
+        - name: X-Correlation-Id
+          required: false
+          in: header
+          schema:
+            type: string
+            example: cid-example
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - cancel_code
+                  - reembolso_id
+                  - monto_reembolsado
+                  - refund
+                  - stock_restoration
+                  - message
+                properties:
+                  reserva_id:
+                    type: string
+                  estado:
+                    type: string
+                    enum:
+                      - CANCELADA
+                  status:
+                    type: string
+                    enum:
+                      - CANCELLED
+                  cancel_code:
+                    type: string
+                  reembolso_id:
+                    type: string
+                  monto_reembolsado:
+                    type: number
+                    minimum: 0
+                  message:
+                    type: string
+                  refund:
+                    type: object
+                    required:
+                      - refund_id
+                      - status
+                      - amount
+                      - currency
+                      - message
+                    properties:
+                      refund_id:
+                        type: string
+                      status:
+                        type: string
+                        enum:
+                          - PROCESSED
+                      amount:
+                        type: number
+                        minimum: 0
+                      currency:
+                        type: string
+                      message:
+                        type: string
+                  stock_restoration:
+                    type: object
+                    required:
+                      - status
+                      - restored_spots
+                      - message
+                    properties:
+                      status:
+                        type: string
+                        enum:
+                          - RESTORED
+                      restored_spots:
+                        type: integer
+                        minimum: 0
+                      message:
+                        type: string
+          headers:
+            X-Correlation-Id:
+              description: Identificador propagado o generado para esta solicitud.
+              schema:
+                type: string
+                example: cid-example
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: about:blank
+                title: Bad Request
+                status: 400
+                detail: limit must not be greater than 100
+                instance: /api/v2/atracciones/reservas/{id}/cancel
+                code: VALIDATION_ERROR
+                correlation_id: cid-example
+                timestamp: '2026-10-28T12:00:00.000Z'
+          headers:
+            X-Correlation-Id:
+              description: Identificador propagado o generado para esta solicitud.
+              schema:
+                type: string
+                example: cid-example
+        '409':
+          description: >-
+            Cancelación No Permitida por check-in o Cancelación Fuera de Plazo:
+            menos de 24 horas antes del turno.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: about:blank
+                title: Conflict
+                status: 409
+                detail: Conflict
+                instance: /api/v2/atracciones/reservas/{id}/cancel
+                code: CONFLICT
+                correlation_id: cid-example
+                timestamp: '2026-10-28T12:00:00.000Z'
+          headers:
+            X-Correlation-Id:
+              description: Identificador propagado o generado para esta solicitud.
+              schema:
+                type: string
+                example: cid-example
+        '500':
+          description: Internal Server Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: about:blank
+                title: Internal Server Error
+                status: 500
+                detail: Ha ocurrido un error interno en el servidor.
+                instance: /api/v2/atracciones/reservas/{id}/cancel
+                code: INTERNAL_SERVER_ERROR
+                correlation_id: cid-example
+                timestamp: '2026-10-28T12:00:00.000Z'
+          headers:
+            X-Correlation-Id:
+              description: Identificador propagado o generado para esta solicitud.
+              schema:
+                type: string
+                example: cid-example
+      summary: Cancelar una reserva (compensacion Saga)
+      tags:
+        - Booking
+      security: []
+  /api/v2/reservas/{id}/cancel:
+    post:
+      operationId: BookingCancellationAliasController_cancel
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: string
+        - name: Idempotency-Key
+          required: false
+          in: header
+          schema:
+            type: string
+        - name: X-Correlation-Id
+          required: false
+          in: header
+          schema:
+            type: string
+            example: cid-example
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  maxLength: 500
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - cancel_code
+                  - reembolso_id
+                  - monto_reembolsado
+                  - refund
+                  - stock_restoration
+                  - message
+                properties:
+                  reserva_id:
+                    type: string
+                  estado:
+                    type: string
+                    enum:
+                      - CANCELADA
+                  status:
+                    type: string
+                    enum:
+                      - CANCELLED
+                  cancel_code:
+                    type: string
+                  reembolso_id:
+                    type: string
+                  monto_reembolsado:
+                    type: number
+                    minimum: 0
+                  message:
+                    type: string
+                  refund:
+                    type: object
+                    required:
+                      - refund_id
+                      - status
+                      - amount
+                      - currency
+                      - message
+                    properties:
+                      refund_id:
+                        type: string
+                      status:
+                        type: string
+                        enum:
+                          - PROCESSED
+                      amount:
+                        type: number
+                        minimum: 0
+                      currency:
+                        type: string
+                      message:
+                        type: string
+                  stock_restoration:
+                    type: object
+                    required:
+                      - status
+                      - restored_spots
+                      - message
+                    properties:
+                      status:
+                        type: string
+                        enum:
+                          - RESTORED
+                      restored_spots:
+                        type: integer
+                        minimum: 0
+                      message:
+                        type: string
+          headers:
+            X-Correlation-Id:
+              description: Identificador propagado o generado para esta solicitud.
+              schema:
+                type: string
+                example: cid-example
+        '400':
+          description: Bad Request
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: about:blank
+                title: Bad Request
+                status: 400
+                detail: limit must not be greater than 100
+                instance: /api/v2/reservas/{id}/cancel
+                code: VALIDATION_ERROR
+                correlation_id: cid-example
+                timestamp: '2026-10-28T12:00:00.000Z'
+          headers:
+            X-Correlation-Id:
+              description: Identificador propagado o generado para esta solicitud.
+              schema:
+                type: string
+                example: cid-example
+        '409':
+          description: >-
+            Cancelación No Permitida por check-in o Cancelación Fuera de Plazo:
+            menos de 24 horas antes del turno.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: about:blank
+                title: Conflict
+                status: 409
+                detail: Conflict
+                instance: /api/v2/reservas/{id}/cancel
+                code: CONFLICT
+                correlation_id: cid-example
+                timestamp: '2026-10-28T12:00:00.000Z'
+          headers:
+            X-Correlation-Id:
+              description: Identificador propagado o generado para esta solicitud.
+              schema:
+                type: string
+                example: cid-example
+        '500':
+          description: Internal Server Error
+          content:
+            application/problem+json:
+              schema:
+                $ref: '#/components/schemas/ProblemDetails'
+              example:
+                type: about:blank
+                title: Internal Server Error
+                status: 500
+                detail: Ha ocurrido un error interno en el servidor.
+                instance: /api/v2/reservas/{id}/cancel
+                code: INTERNAL_SERVER_ERROR
+                correlation_id: cid-example
+                timestamp: '2026-10-28T12:00:00.000Z'
+          headers:
+            X-Correlation-Id:
+              description: Identificador propagado o generado para esta solicitud.
+              schema:
+                type: string
+                example: cid-example
+      summary: Alias compatible de cancelacion Booking
+      tags:
+        - Booking
+      security: []
   /api/v2/atracciones/categorias/arbol:
     get:
       description: Retorna las categorías activas organizadas en estructura padre-hijo.

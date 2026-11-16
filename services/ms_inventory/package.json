@@ -27,6 +27,7 @@
     "typeorm": "^0.3.31"
   },
   "devDependencies": {
+    "@nestjs/testing": "12.3.2",
     "@types/node": "^24.0.0",
     "oxlint": "^1.58.0",
     "oxlint-tsgolint": "^7.0.2001",

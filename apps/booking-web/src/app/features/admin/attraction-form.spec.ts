@@ -26,6 +26,15 @@ describe('Catalog attraction form', () => {
   });
   afterEach(() => { fixture.destroy(); http.verify(); });
 
+  it('loads draft details through the protected admin endpoint', () => {
+    fixture.componentRef.setInput('attraction', { id: '21', name: 'Borrador', status: 'BORRADOR' });
+    fixture.detectChanges();
+    const request = http.expectOne('/api/v2/atracciones/admin/detalle/21');
+    request.flush({ id: '21', name: 'Borrador editable', status: 'BORRADOR', description: 'Una descripcion completa' });
+    expect(form.form.controls.name.value).toBe('Borrador editable');
+    http.expectNone('/api/v2/atracciones/21');
+  });
+
   it('requires valid Catalog fields before creating an attraction', () => {
     form.submit();
     expect(form.error()).toContain('Completa los campos obligatorios');

@@ -42,10 +42,17 @@ describe('App shell', () => {
         id: '123', email: 'ana@example.com', first_name: 'Ana', last_name: 'Prueba',
         verified: false, active: true, roles: ['CLIENTE'],
       },
-      verification_email_sent: true,
+      verification_email_sent: false,
     });
-    expect(app['authService'].isLoggedIn()).toBe(false);
-    expect(app['authMessage']()).toContain('verificación');
+    const http = TestBed.inject(HttpTestingController);
+    http.expectOne('/api/v2/auth/login').flush({ access_token: 'access', refresh_token: 'refresh' });
+    http.expectOne('/api/v2/auth/me').flush({ user: {
+      id: '123', email: 'ana@example.com', first_name: 'Ana', last_name: 'Prueba',
+      verified: false, roles: ['CLIENTE'],
+    } });
+    expect(app['authService'].isLoggedIn()).toBe(true);
+    expect(app['loginModalAbierto']()).toBe(false);
+    expect(app['authMessage']()).toBe('');
     form.controls.first_name.setValue('x'.repeat(121));
     expect(form.controls.first_name.invalid).toBe(true);
     form.controls.password.setValue('corta');

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -29,6 +30,32 @@ export class CartController {
   @Get('admin/reservations')
   adminReservations() {
     return this.service.adminReservations();
+  }
+  @InfrastructureRoles('ADMIN')
+  @Get('admin/customers')
+  adminCustomers() {
+    return this.service.adminCustomerUserIds();
+  }
+  @InfrastructureRoles('ADMIN')
+  @Get('admin/summary')
+  adminSummary() {
+    return this.service.adminSummary();
+  }
+  @InfrastructureRoles('ADMIN')
+  @Post('admin/reservations/:id/checkin')
+  checkin(
+    @Req() request: SagaHttpRequest,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: unknown,
+  ) {
+    return this.service.checkin(request.principal.userId, id, body);
+  }
+  @InfrastructureRoles('ADMIN')
+  @Get('admin/users/:userId/reservations')
+  adminUserReservations(@Param('userId') userId: string) {
+    if (!/^[1-9]\d{0,18}$/.test(userId) || BigInt(userId) > 9223372036854775807n)
+      throw new BadRequestException('userId invalido');
+    return this.service.adminUserReservations(userId);
   }
   @Post('items')
   add(

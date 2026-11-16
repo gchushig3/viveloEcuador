@@ -1,0 +1,291 @@
+openapi: 3.0.3
+info:
+  title: MS Billing Profile API
+  version: 1.0.0
+  description: API para administrar los datos de facturación del usuario autenticado.
+servers:
+  - url: /
+tags:
+  - name: Billing profiles
+  - name: Health
+paths:
+  /api/v2/billing-profiles:
+    get:
+      operationId: listBillingProfiles
+      summary: Listar datos de facturación del usuario
+      description: Devuelve los datos activos asociados al usuario del access token, ordenados por ID ascendente.
+      tags: [Billing profiles]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Lista de datos de facturación; puede estar vacía.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/BillingProfile'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '503':
+          $ref: '#/components/responses/IdentityUnavailable'
+    post:
+      operationId: createBillingProfile
+      summary: Crear un dato de facturación
+      description: El propietario se deriva del usuario autenticado. Si es principal, desmarca el dato principal anterior del mismo usuario.
+      tags: [Billing profiles]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBillingProfile'
+      responses:
+        '201':
+          description: Dato creado.
+          headers:
+            Location:
+              description: Ruta del dato creado.
+              schema:
+                type: string
+                example: /api/v2/billing-profiles/12
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: La identificación ya está registrada.
+        '503':
+          $ref: '#/components/responses/IdentityUnavailable'
+  /api/v2/billing-profiles/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/BigId'
+    get:
+      operationId: getBillingProfile
+      summary: Obtener un dato de facturación
+      description: Solo se puede consultar un dato activo perteneciente al usuario autenticado.
+      tags: [Billing profiles]
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dato de facturación.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: El dato no existe, está inactivo o pertenece a otro usuario.
+        '503':
+          $ref: '#/components/responses/IdentityUnavailable'
+    patch:
+      operationId: updateBillingProfile
+      summary: Actualizar parcialmente un dato de facturación
+      description: El tipo y número de identificación no se pueden modificar. El objeto debe incluir al menos una propiedad permitida.
+      tags: [Billing profiles]
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateBillingProfile'
+      responses:
+        '200':
+          description: Dato actualizado.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingProfile'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: El dato no existe, está inactivo o pertenece a otro usuario.
+        '409':
+          description: Conflicto con una restricción única.
+        '503':
+          $ref: '#/components/responses/IdentityUnavailable'
+    delete:
+      operationId: deleteBillingProfile
+      summary: Desactivar un dato de facturación
+      description: Baja lógica; el registro se conserva y deja de ser principal.
+      tags: [Billing profiles]
+      security:
+        - bearerAuth: []
+      responses:
+        '204':
+          description: Dato desactivado.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: El dato no existe, está inactivo o pertenece a otro usuario.
+        '503':
+          $ref: '#/components/responses/IdentityUnavailable'
+  /api/v2/health:
+    get:
+      operationId: checkBillingProfileHealth
+      summary: Comprobar el estado del servicio
+      description: Ejecuta el health check de Terminus sin indicadores externos registrados.
+      tags: [Health]
+      security: []
+      responses:
+        '200':
+          description: Servicio saludable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheck'
+        '503':
+          description: Servicio no saludable.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthCheck'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    BadRequest:
+      description: Identificador, cuerpo o parámetro inválido.
+    Unauthorized:
+      description: Token ausente, inválido o sesión no válida.
+    IdentityUnavailable:
+      description: Servicio de identidad no disponible.
+  schemas:
+    BigId:
+      type: string
+      pattern: '^[1-9][0-9]{0,18}$'
+      description: Identificador BIGINT positivo representado como texto.
+      example: '12'
+    TipoIdentificacion:
+      type: string
+      enum: [CEDULA, RUC, PASAPORTE, CONSUMIDOR_FINAL]
+    CreateBillingProfile:
+      type: object
+      additionalProperties: false
+      required:
+        - dfa_tipo_identificacion
+        - dfa_identificacion
+        - dfa_razon_social
+        - dfa_correo
+      properties:
+        dfa_tipo_identificacion:
+          $ref: '#/components/schemas/TipoIdentificacion'
+        dfa_identificacion:
+          type: string
+          minLength: 1
+          maxLength: 20
+          description: >-
+            CEDULA: 10 dígitos; RUC: 13 dígitos; PASAPORTE: 6 a 20
+            caracteres A-Z o 0-9; CONSUMIDOR_FINAL: 9999999999999.
+        dfa_razon_social:
+          type: string
+          minLength: 1
+          maxLength: 150
+        dfa_correo:
+          type: string
+          format: email
+          maxLength: 160
+        dfa_telefono:
+          type: string
+          pattern: '^\+?[0-9]{7,15}$'
+          description: Opcional; signo + opcional seguido de 7 a 15 dígitos.
+        dfa_es_principal:
+          type: boolean
+          default: false
+    UpdateBillingProfile:
+      type: object
+      additionalProperties: false
+      minProperties: 1
+      properties:
+        dfa_razon_social:
+          type: string
+          minLength: 1
+          maxLength: 150
+        dfa_correo:
+          type: string
+          format: email
+          maxLength: 160
+        dfa_telefono:
+          type: string
+          pattern: '^\+?[0-9]{7,15}$'
+        dfa_es_principal:
+          type: boolean
+    BillingProfile:
+      type: object
+      required:
+        - dfa_id
+        - usu_id
+        - dfa_tipo_identificacion
+        - dfa_identificacion
+        - dfa_razon_social
+        - dfa_correo
+        - dfa_telefono
+        - dfa_es_principal
+        - dfa_activo
+        - dfa_creado_en
+      properties:
+        dfa_id:
+          $ref: '#/components/schemas/BigId'
+        usu_id:
+          $ref: '#/components/schemas/BigId'
+        dfa_tipo_identificacion:
+          $ref: '#/components/schemas/TipoIdentificacion'
+        dfa_identificacion:
+          type: string
+        dfa_razon_social:
+          type: string
+        dfa_correo:
+          type: string
+          format: email
+        dfa_telefono:
+          type: string
+          nullable: true
+        dfa_es_principal:
+          type: boolean
+        dfa_activo:
+          type: boolean
+        dfa_creado_en:
+          type: string
+          format: date-time
+    HealthCheck:
+      type: object
+      required: [status, info, error, details]
+      properties:
+        status:
+          type: string
+          enum: [ok, error]
+        info:
+          type: object
+          additionalProperties: true
+          nullable: true
+        error:
+          type: object
+          additionalProperties: true
+          nullable: true
+        details:
+          type: object
+          additionalProperties: true

@@ -11,6 +11,7 @@ import {
 import { CartController } from './cart/cart.controller.js';
 import { CartService } from './cart/cart.service.js';
 import { InventoryClient } from './cart/inventory.client.js';
+import { HealthController } from './cart/health.controller.js';
 
 @Module({
   imports: [
@@ -18,7 +19,7 @@ import { InventoryClient } from './cart/inventory.client.js';
     NeonDatabaseModule.forRootAsync(),
     SagaRuntimeModule.forService('ms_cart'),
   ],
-  controllers: [AppController, CartController],
+  controllers: [AppController, CartController, HealthController],
   providers: [
     AppService,
     CartService,

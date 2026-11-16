@@ -1,0 +1,13 @@
+name: ms-cliente
+services:
+  app:
+    build:
+      context: ../..
+      dockerfile: services/ms-cliente/Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: 3018
+      DATABASE_URL: ${DATABASE_URL:?Configure the Neon DATABASE_URL in .env}
+      DB_POOL_MAX: ${DB_POOL_MAX:-5}
+    ports: ["127.0.0.1:3018:3018"]
+    restart: on-failure:3

@@ -1,4 +1,5 @@
-import { HttpStatus } from '@nestjs/common';
+import { HttpStatus, ConflictException } from '@nestjs/common';
+import { Test, type TestingModule } from '@nestjs/testing';
 import type { Response } from 'express';
 import { CrearPagoRequestDto } from './dto/crear-pago-request.dto.js';
 import { ListarPagosQueryDto } from './dto/listar-pagos-query.dto.js';
@@ -19,10 +20,38 @@ describe('PagoController', () => {
     obtenerPorId,
     simular,
   };
-  const controller = new PagoController(pagoService as unknown as PagoService);
+  let controller: PagoController;
+  let module: TestingModule;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.resetAllMocks();
+    module = await Test.createTestingModule({
+      controllers: [PagoController],
+      providers: [{ provide: PagoService, useValue: pagoService }],
+    }).compile();
+    controller = module.get(PagoController);
+  });
+  afterEach(async () => {
+    await module?.close();
+  });
+
+  it('propaga conflictos sin anunciar un pago creado', async () => {
+    const error = new ConflictException('Numero de pago duplicado');
+    crear.mockRejectedValue(error);
+    const response = { status: vi.fn(), setHeader: vi.fn() };
+    await expect(
+      controller.crear(
+        {
+          numero: 'PAY-1',
+          orden_id: '42',
+          metodo_codigo: 'TARJETA',
+          monto: '1.00',
+        },
+        response as unknown as Response,
+      ),
+    ).rejects.toBe(error);
+    expect(response.status).not.toHaveBeenCalled();
+    expect(response.setHeader).not.toHaveBeenCalled();
   });
 
   it('delegates creation and sets 201 with a Location header', async () => {

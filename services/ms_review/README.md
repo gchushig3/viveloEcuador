@@ -25,6 +25,15 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## Contratos
+
+La API REST usa el prefijo `/api/v2`. La consulta de resenas es publica; crear
+resenas requiere autenticacion y cambiar su visibilidad requiere el rol `ADMIN`.
+El resumen de calificaciones se publica por AMQP usando un outbox transaccional.
+
+- [OpenAPI REST](./contract/ms_review-openapi-v1.yaml)
+- [AsyncAPI de eventos](./contract/ms_review-asyncapi-v1.yaml)
+
 ## Project setup
 
 ```bash

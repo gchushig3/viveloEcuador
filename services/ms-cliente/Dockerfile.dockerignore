@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+**/.angular
+**/coverage
+**/.tmp
+**/.npm-cache
+**/.env*
+**/.keys
+**/*.pem
+**/*.key
+.git
+.git-archives
+**/.secrets.json
+**/postgres.local.env

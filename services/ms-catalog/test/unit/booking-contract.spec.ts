@@ -1,3 +1,4 @@
+﻿import { InventoryAdminService, type AdminSlot } from '../../src/booking/inventory-admin.service.js';
 import 'reflect-metadata';
 import { describe, expect, it, jest } from '@jest/globals';
 import type { Repository } from 'typeorm';
@@ -110,6 +111,7 @@ describe('Catalogo contractual Booking', () => {
         >()
         .mockResolvedValue(true),
     };
+    const stock = { list: jest.fn<() => Promise<AdminSlot[]>>().mockResolvedValue([]) };
     const service = new BookingCatalogService(
       {
         createQueryBuilder: () => qb,
@@ -117,9 +119,23 @@ describe('Catalogo contractual Booking', () => {
       {} as Repository<BookingProfileEntity>,
       {} as Repository<CategoriaEntity>,
       inventory as unknown as InventoryAvailabilityService,
+      stock as unknown as InventoryAdminService,
     );
-    return { service, qb, inventory };
+    return { service, qb, inventory, stock };
   }
+
+  it('expone los cupos reales y conserva los campos de disponibilidad de Booking', async () => {
+    const { service, stock } = setup();
+    const times = fixture.booking.payload.schedule_times;
+    stock.list.mockResolvedValue([{ slotId: 'slot', date: '2030-01-01', timeSlot: times[0]!,
+      total: 10, reserved: 7, available: 3, closed: false, status: 'DISPONIBLE' }]);
+    const result = await service.availability('quito', '2030-01-01', 4);
+    expect(result.horarios[0]).toMatchObject({ available_spots: 3, disponible: false });
+    stock.list.mockResolvedValue([{ slotId: 'slot', date: '2030-01-01', timeSlot: times[0]!,
+      total: 10, reserved: 10, available: 0, closed: false, status: 'AGOTADO' }]);
+    expect((await service.availability('quito', '2030-01-01', 1)).horarios[0])
+      .toMatchObject({ available_spots: 0, disponible: false, status: 'AGOTADO' });
+  });
 
   it('detalle y busqueda cumplen los esquemas derivados del YAML inmutable', async () => {
     const { service } = setup();

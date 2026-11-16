@@ -2,6 +2,7 @@ import { InjectionToken } from '@angular/core';
 import { environment } from '../../environments/environment';
 export const API_URL = new InjectionToken<string>('API_URL', { providedIn: 'root', factory: () => environment.apiUrl });
 export const IDENTITY_API_URL = new InjectionToken<string>('IDENTITY_API_URL', { providedIn: 'root', factory: () => environment.identityApiUrl });
+export const IDENTITY_ADMIN_API_URL = new InjectionToken<string>('IDENTITY_ADMIN_API_URL', { providedIn: 'root', factory: () => environment.identityAdminApiUrl });
 export const CATALOG_API_URL = new InjectionToken<string>('CATALOG_API_URL', { providedIn: 'root', factory: () => environment.catalogApiUrl });
 export const CART_API_URL = new InjectionToken<string>('CART_API_URL', { providedIn: 'root', factory: () => environment.cartApiUrl });
 export const TELEMETRY_ENABLED = new InjectionToken<boolean>('TELEMETRY_ENABLED', { providedIn: 'root', factory: () => true });

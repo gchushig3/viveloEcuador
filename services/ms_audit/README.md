@@ -34,6 +34,11 @@ directos a esa cola. No consumir las colas de trabajo originales: eso haria que
 auditoria compita con los consumidores funcionales. Aplicar `init-audit.sql`.
 En una base ya inicializada puede ejecutarse `database/audit-event.sql`.
 
+## Contratos
+
+- [`contract/ms_audit-openapi-v1.yaml`](contract/ms_audit-openapi-v1.yaml): API HTTP de consulta y health check.
+- [`contract/ms_audit-asyncapi-v1.yaml`](contract/ms_audit-asyncapi-v1.yaml): formato de los mensajes JSON consumidos desde las colas espejo.
+
 ## Project setup
 
 ```bash

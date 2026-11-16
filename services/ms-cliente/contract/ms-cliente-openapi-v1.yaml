@@ -1,0 +1,493 @@
+openapi: 3.0.3
+info:
+  title: MS Cliente API
+  version: 1.0.0
+  description: |
+    Contrato REST del perfil comercial de clientes. El servicio no valida
+    tokens ni roles por si mismo: debe permanecer en la red privada y recibir
+    trafico autorizado por el Gateway. En POST /clientes/web/register,
+    x-user-id debe ser agregado por el Gateway despues de autenticar al usuario;
+    ms-cliente confia en ese encabezado y no verifica su origen.
+servers:
+  - url: http://localhost:3018/api/v2
+    description: Desarrollo local; el puerto puede configurarse con PORT.
+security: []
+tags:
+  - name: Clientes
+    description: Busqueda y registro de perfiles comerciales
+  - name: Administracion
+    description: Consultas administrativas de solo lectura
+  - name: Salud
+    description: Disponibilidad y readiness del servicio
+paths:
+  /clientes:
+    get:
+      tags: [Clientes]
+      operationId: buscarCliente
+      summary: Buscar un cliente por email o identificacion
+      description: |
+        Busqueda exacta y sin autenticacion propia. Se requiere email,
+        identificacion o ambos. Si ambos valores identifican clientes distintos,
+        se responde 409; si no hay coincidencia, se responde 404.
+      parameters:
+        - name: email
+          in: query
+          required: false
+          description: Email exacto; se recortan espacios y se compara en minusculas.
+          schema:
+            type: string
+            maxLength: 200
+        - name: identificacion
+          in: query
+          required: false
+          description: Identificacion exacta; se recortan espacios y se convierte a mayusculas.
+          schema:
+            type: string
+            maxLength: 30
+      responses:
+        '200':
+          description: Cliente encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientLookup'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Email e identificacion corresponden a clientes distintos
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags: [Clientes]
+      operationId: registrarClienteBooking
+      summary: Registrar o reutilizar un cliente
+      description: |
+        Registra el perfil con origen BOOKING. La identificacion es opcional.
+        Si el email o la identificacion ya corresponden al mismo cliente, se
+        reutiliza y se responde 200; si se trata de clientes distintos o el
+        cliente tiene otra identificacion, se responde 409. Aunque el campo
+        origen se acepta por compatibilidad y se valida, esta ruta siempre
+        registra BOOKING.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClientRegistrationRequest'
+      responses:
+        '201':
+          description: Cliente creado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientIdResponse'
+        '200':
+          description: Cliente existente reutilizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientIdResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /clientes/id/{id}:
+    get:
+      tags: [Clientes]
+      operationId: obtenerClientePorId
+      summary: Obtener el perfil completo por UUID
+      description: Consulta interna sin autenticacion propia; proteger mediante la red privada/Gateway.
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+      responses:
+        '200':
+          description: Perfil encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Client'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /clientes/integration/register:
+    post:
+      tags: [Clientes]
+      operationId: registrarClienteIntegracion
+      summary: Registrar o reutilizar un cliente desde una integracion
+      description: |
+        Registra el origen BOOKING. Siempre responde 201, incluso cuando
+        reutiliza un cliente existente; en ese caso incluye reused: true.
+        La ruta no autentica al llamador; solo debe exponerse a servicios
+        autorizados dentro de la red privada.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClientRegistrationRequest'
+      responses:
+        '201':
+          description: Cliente creado o reutilizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientRegistrationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /clientes/web/register:
+    post:
+      tags: [Clientes]
+      operationId: registrarClienteTienda
+      summary: Registrar o reutilizar el cliente de una compra web
+      description: |
+        Siempre responde 200 y registra el origen TIENDA. Requiere que el
+        Gateway agregue x-user-id despues de validar la identidad. El servicio
+        confia en ese encabezado; el usuario debe tener una identificacion de
+        10 o 13 digitos y el ID debe ser bigint positivo. Si reutiliza un
+        cliente, incluye reused: true.
+      parameters:
+        - name: x-user-id
+          in: header
+          required: true
+          description: ID de Identity verificado e inyectado por el Gateway; no enviar desde el cliente publico.
+          schema:
+            $ref: '#/components/schemas/BigId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ClientRegistrationRequest'
+                - type: object
+                  required: [identificacion]
+                  properties:
+                    identificacion:
+                      type: string
+                      pattern: '^[0-9]{10}([0-9]{3})?$'
+                      description: Cedula de 10 digitos o RUC de 13 digitos.
+      responses:
+        '200':
+          description: Cliente de tienda creado o reutilizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientRegistrationResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /clientes/admin:
+    get:
+      tags: [Administracion]
+      operationId: listarClientes
+      summary: Listar clientes de forma paginada
+      description: Consulta administrativa de solo lectura; el servicio no aplica autorizacion propia.
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: q
+          in: query
+          required: false
+          description: Busqueda parcial por nombre, email o identificacion.
+          schema:
+            type: string
+            maxLength: 100
+      responses:
+        '200':
+          description: Pagina de clientes, ordenada por creacion descendente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ClientPage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /clientes/admin/{id}:
+    get:
+      tags: [Administracion]
+      operationId: obtenerClienteAdmin
+      summary: Obtener el perfil completo para administracion
+      description: Consulta administrativa de solo lectura; el servicio no aplica autorizacion propia.
+      parameters:
+        - $ref: '#/components/parameters/ClientId'
+      responses:
+        '200':
+          description: Perfil encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Client'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /health/live:
+    get:
+      tags: [Salud]
+      operationId: healthLive
+      summary: Comprobar que el proceso esta activo
+      responses:
+        '200':
+          description: Proceso activo
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthUp'
+  /health/ready:
+    get:
+      tags: [Salud]
+      operationId: healthReady
+      summary: Comprobar que el servicio puede acceder a la base de datos
+      responses:
+        '200':
+          description: Base de datos accesible
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthUp'
+        '503':
+          description: Base de datos no disponible
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthDown'
+components:
+  parameters:
+    ClientId:
+      name: id
+      in: path
+      required: true
+      description: UUID publico y estable del cliente
+      schema:
+        type: string
+        format: uuid
+  responses:
+    BadRequest:
+      description: Parametro, encabezado o cuerpo invalido
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Cliente no encontrado
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: Los datos identifican clientes distintos o violan una unicidad
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ServiceUnavailable:
+      description: No fue posible guardar el cliente
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalServerError:
+      description: Error inesperado del servicio o de la persistencia
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    ClientRegistrationRequest:
+      type: object
+      description: Se normalizan email e identificacion; los campos que no sean parte de la entrada se ignoran.
+      additionalProperties: true
+      required: [nombre, email]
+      properties:
+        nombre:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: Se recortan espacios; no puede quedar vacio.
+        email:
+          type: string
+          maxLength: 200
+          pattern: '^[^\s@]+@[^\s@]+\.[^\s@]+$'
+          description: Se recorta y se guarda en minusculas.
+        identificacion:
+          type: string
+          minLength: 3
+          maxLength: 30
+          description: Opcional en Booking; se recorta y convierte a mayusculas.
+        telefono:
+          type: string
+          maxLength: 30
+          pattern: '^[+]?[0-9 ()-]{7,30}$'
+        origen:
+          type: string
+          enum: [TIENDA, BOOKING]
+          description: Si se envia, se valida; cada ruta fija su propio origen.
+    Client:
+      type: object
+      required:
+        - client_id
+        - nombre
+        - email
+        - identificacion
+        - telefono
+        - origenes
+        - usuario_id
+        - creado_en
+      properties:
+        client_id:
+          type: string
+          format: uuid
+        nombre:
+          type: string
+          maxLength: 200
+        email:
+          type: string
+          maxLength: 200
+        identificacion:
+          type: string
+          maxLength: 30
+          nullable: true
+        telefono:
+          type: string
+          maxLength: 30
+          nullable: true
+        origenes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            type: string
+            enum: [TIENDA, BOOKING]
+        usuario_id:
+          type: string
+          pattern: '^[1-9][0-9]{0,18}$'
+          nullable: true
+        creado_en:
+          type: string
+          format: date-time
+    ClientLookup:
+      type: object
+      required: [client_id, nombre, email, identificacion]
+      properties:
+        client_id:
+          type: string
+          format: uuid
+        nombre:
+          type: string
+        email:
+          type: string
+        identificacion:
+          type: string
+          nullable: true
+    ClientIdResponse:
+      type: object
+      required: [client_id]
+      properties:
+        client_id:
+          type: string
+          format: uuid
+    ClientRegistrationResponse:
+      type: object
+      required: [client_id, cliente]
+      properties:
+        reused:
+          type: boolean
+          enum: [true]
+          description: Presente cuando se reutilizo un perfil existente.
+        client_id:
+          type: string
+          format: uuid
+        cliente:
+          $ref: '#/components/schemas/Client'
+    ClientPage:
+      type: object
+      required: [items, total, page, limit, total_pages]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Client'
+        total:
+          type: integer
+          minimum: 0
+        page:
+          type: integer
+          minimum: 1
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        total_pages:
+          type: integer
+          minimum: 1
+    BigId:
+      type: string
+      pattern: '^[1-9][0-9]{0,18}$'
+    HealthUp:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [UP]
+    HealthDown:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [DOWN]
+    Error:
+      type: object
+      description: Cuerpo de error HTTP NestJS
+      properties:
+        statusCode:
+          type: integer
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        error:
+          type: string

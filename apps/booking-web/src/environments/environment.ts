@@ -1,6 +1,9 @@
+const gateway = 'https://api-gateway.yellowsky-d7d7b363.brazilsouth.azurecontainerapps.io';
+
 export const environment = {
-  apiUrl: 'http://localhost:3000/api/v1',
-  identityApiUrl: 'https://ms-identity.yellowsky-d7d7b363.brazilsouth.azurecontainerapps.io/api/v2',
-  catalogApiUrl: '/catalog-api',
-  cartApiUrl: 'https://ms-cart.yellowsky-d7d7b363.brazilsouth.azurecontainerapps.io/api/v2',
+  apiUrl: `${gateway}/api/v1`,
+  identityApiUrl: `${gateway}/api/v1`,
+  identityAdminApiUrl: `${gateway}/api/v1/identity`,
+  catalogApiUrl: `${gateway}/api/v1/catalog`,
+  cartApiUrl: `${gateway}/api/v1`,
 };

@@ -13,12 +13,14 @@ import type { Request } from 'express';
 
 const services = [
   'auth',
+  'identity',
   'cart',
   'booking',
   'catalog',
   'inventory',
   'payment',
   'audit',
+  'clients',
 ] as const;
 
 type ServiceEnvironmentName =
@@ -28,19 +30,22 @@ type ServiceEnvironmentName =
   | 'CATALOG'
   | 'INVENTORY'
   | 'PAYMENT'
-  | 'AUDIT';
+  | 'AUDIT'
+  | 'CLIENTS';
 
 const environmentNames: Record<
   (typeof services)[number],
   ServiceEnvironmentName
 > = {
   auth: 'IDENTITY',
+  identity: 'IDENTITY',
   cart: 'CART',
   booking: 'BOOKING',
   catalog: 'CATALOG',
   inventory: 'INVENTORY',
   payment: 'PAYMENT',
   audit: 'AUDIT',
+  clients: 'CLIENTS',
 };
 
 const hopByHopHeaders = new Set([
@@ -117,7 +122,9 @@ export class ProxyService {
       throw new NotFoundException('Unknown API route');
     const name = environmentNames[service as (typeof services)[number]];
     const base = new URL(this.env[`${name}_URL`]);
-    const prefix = this.env[`${name}_API_PREFIX`];
+    const prefix = service === 'identity'
+      ? this.env.IDENTITY_ADMIN_API_PREFIX
+      : this.env[`${name}_API_PREFIX`];
     const suffix = match[2] ?? '';
     const path = `${prefix === '/' ? '' : prefix}${suffix}${match[3] ?? ''}` || '/';
     return { origin: base, path };

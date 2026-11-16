@@ -3,9 +3,9 @@
 Microservicio de cupones de descuento del Sistema de Atracciones (Descubre EC).
 
 - **Responsabilidad:** Gestionar los cupones de descuento: tabla `cupon`.
-- **Contrato:** REST en `/api/v2`; esquemas AJV y JWT RS256 mediante Identity.
+- **Contrato:** [OpenAPI 3.0](contract/ms_coupon-openapi-v1.yaml) bajo `/api/v2`; lecturas públicas y escrituras para ADMIN.
 - **Base de datos:** `ms_coupon` (database-per-service).
-- **Dependencias externas:** Ninguna (no consume otros microservicios).
+- **Autenticación:** Identity valida JWT para las operaciones administrativas.
 
 ## Descripción
 
@@ -22,6 +22,10 @@ Ademas, el cupon registra su vigencia (`cup_fecha_inicio` / `cup_fecha_fin`) y
 el uso maximo (`cup_usos_max`, `NULL` = sin limite).
 
 ## Endpoints
+
+El contrato enlazado arriba contiene los esquemas completos, autenticación,
+validaciones y respuestas. Las operaciones de lectura son públicas; crear,
+actualizar y eliminar requieren un usuario autenticado con rol `ADMIN`.
 
 | Metodo | Ruta | Descripcion | Respuesta |
 |---|---|---|---|
@@ -68,8 +72,9 @@ Crea un cupon.
 | `cup_usos_max` | integer | No | `>= 0`; `NULL` = sin limite |
 | `cup_activo` | boolean | No | Por defecto `true` |
 
-**Respuesta:** `201 Created` + header `Location: /api/v1/cupones/{cup_id}`;
-`400 Bad Request` si el body no es valido.
+**Respuesta:** `201 Created` con el cupón creado; `400 Bad Request` si el body
+no es válido; `409 Conflict` si el código ya existe. No se devuelve header
+`Location`.
 
 #### PUT `/api/v2/cupones/:id`
 
@@ -101,7 +106,7 @@ Tabla `cupon` (domain `dom_importe NUMERIC(12,2) CHECK (VALUE >= 0)`):
 | `cup_valor` | NUMERIC(12,2) | Valor del descuento |
 | `cup_fecha_inicio` | DATE | Fecha de inicio |
 | `cup_fecha_fin` | DATE | Fecha fin (NULL = sin vigencia) |
-| `cup_usos_max` | INTEGER | Usos maximos (NULL = sin limite) |
+| `cup_usos_max` | INTEGER | Usos máximos positivos (NULL = sin límite) |
 | `cup_activo` | BOOLEAN | Activo por defecto |
 
 Indices/constraints definidos en `init-coupon.sql`:

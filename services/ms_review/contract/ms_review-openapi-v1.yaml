@@ -1,0 +1,267 @@
+openapi: 3.0.3
+info:
+  title: MS Review API
+  version: 1.0.0
+  description: |
+    Contrato REST de MS Review. Las reseñas se guardan en la base de datos
+    ms_review. Su resumen se publica de forma asincrona mediante el outbox
+    transaccional; el evento se describe en ms_review-asyncapi-v1.yaml.
+servers:
+  - url: http://localhost:3000/api/v2
+    description: Desarrollo local; el puerto puede configurarse con PORT.
+security:
+  - BearerAuth: []
+tags:
+  - name: Resenas
+    description: Consulta, creacion y moderacion de resenas
+  - name: Salud
+    description: Estado del servicio
+paths:
+  /reviews:
+    get:
+      tags: [Resenas]
+      operationId: listarResenasVisibles
+      summary: Listar resenas visibles de una atraccion
+      description: |
+        Operacion publica. Devuelve hasta 100 resenas visibles, ordenadas por
+        ren_id descendente. atr_id es un identificador logico; esta operacion
+        no consulta ms-catalog para validar que la atraccion exista.
+      security: []
+      parameters:
+        - name: atr_id
+          in: query
+          required: true
+          description: Identificador bigint positivo de la atraccion
+          schema:
+            $ref: '#/components/schemas/BigId'
+      responses:
+        '200':
+          description: Resenas visibles de la atraccion
+          content:
+            application/json:
+              schema:
+                type: array
+                maxItems: 100
+                items:
+                  $ref: '#/components/schemas/Resena'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    post:
+      tags: [Resenas]
+      operationId: crearResena
+      summary: Crear una resena para la identidad autenticada
+      description: |
+        Requiere un access token Bearer valido. MS Review obtiene usu_id de la
+        identidad validada por ms-identity; no se acepta usu_id ni
+        ren_autor_nombre en el cuerpo. No se comprueba sincronicamente que
+        atr_id exista en ms-catalog. Una resena por usuario y atraccion; un
+        duplicado se responde con 409. La resena y el evento de resumen se
+        guardan en la misma transaccion.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CrearResenaRequest'
+      responses:
+        '201':
+          description: Resena creada
+          headers:
+            Location:
+              description: Ruta de identificacion devuelta por el servicio
+              schema:
+                type: string
+                example: /api/v2/reviews/3
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resena'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Ya existe una resena de este usuario para la atraccion
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/IdentityUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /reviews/{id}/visibility:
+    patch:
+      tags: [Resenas]
+      operationId: cambiarVisibilidadResena
+      summary: Cambiar la visibilidad de una resena
+      description: Requiere un access token Bearer asociado al rol ADMIN.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Identificador bigint positivo de la resena
+          schema:
+            $ref: '#/components/schemas/BigId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CambiarVisibilidadRequest'
+      responses:
+        '200':
+          description: Resena actualizada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Resena'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: La resena no existe
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          $ref: '#/components/responses/IdentityUnavailable'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /health:
+    get:
+      tags: [Salud]
+      operationId: healthCheck
+      summary: Consultar el estado del servicio
+      security: []
+      responses:
+        '200':
+          description: Servicio disponible
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: Token de acceso validado mediante el endpoint de introspeccion de Identity.
+  responses:
+    BadRequest:
+      description: Parametro, ruta o cuerpo invalido
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Token ausente o sesion invalida
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: La identidad no tiene el rol ADMIN
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    IdentityUnavailable:
+      description: No fue posible validar la sesion con Identity
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InternalServerError:
+      description: Error inesperado del servicio o de la persistencia
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    CrearResenaRequest:
+      type: object
+      additionalProperties: false
+      required: [atr_id, ren_puntuacion, ren_comentario]
+      properties:
+        atr_id:
+          $ref: '#/components/schemas/BigId'
+        ren_puntuacion:
+          type: integer
+          minimum: 1
+          maximum: 5
+        ren_comentario:
+          type: string
+          minLength: 1
+          maxLength: 1000
+    CambiarVisibilidadRequest:
+      type: object
+      additionalProperties: false
+      required: [ren_visible]
+      properties:
+        ren_visible:
+          type: boolean
+    Resena:
+      type: object
+      required:
+        - ren_id
+        - atr_id
+        - usu_id
+        - ren_autor_nombre
+        - ren_puntuacion
+        - ren_comentario
+        - ren_visible
+        - ren_creado_en
+      properties:
+        ren_id:
+          $ref: '#/components/schemas/BigId'
+        atr_id:
+          $ref: '#/components/schemas/BigId'
+        usu_id:
+          type: string
+          pattern: '^[1-9][0-9]{0,18}$'
+          nullable: true
+        ren_autor_nombre:
+          type: string
+          maxLength: 120
+          nullable: true
+        ren_puntuacion:
+          type: integer
+          minimum: 1
+          maximum: 5
+        ren_comentario:
+          type: string
+          maxLength: 1000
+        ren_visible:
+          type: boolean
+        ren_creado_en:
+          type: string
+          format: date-time
+    BigId:
+      type: string
+      pattern: '^[1-9][0-9]{0,18}$'
+    Error:
+      type: object
+      description: Cuerpo de error HTTP NestJS
+      properties:
+        statusCode:
+          type: integer
+        message:
+          oneOf:
+            - type: string
+            - type: array
+              items:
+                type: string
+        error:
+          type: string

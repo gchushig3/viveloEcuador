@@ -14,6 +14,20 @@ let stderr = '';
 let privateKey;
 let publicKey;
 
+test('allows credentialed telemetry preflight only for configured frontend origins', async () => {
+  const response = await fetch(`${gatewayUrl}/api/v1/catalog/observabilidad/eventos`, {
+    method: 'OPTIONS', headers: { origin: 'https://frontend.example.test',
+      'access-control-request-method': 'POST', 'access-control-request-headers': 'content-type' },
+  });
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get('access-control-allow-origin'), 'https://frontend.example.test');
+  assert.equal(response.headers.get('access-control-allow-credentials'), 'true');
+  const denied = await fetch(`${gatewayUrl}/api/v1/catalog/observabilidad/eventos`, {
+    method: 'OPTIONS', headers: { origin: 'https://untrusted.example.test', 'access-control-request-method': 'POST' },
+  });
+  assert.equal(denied.headers.get('access-control-allow-origin'), null);
+});
+
 before(async () => {
   const keys = generateKeyPairSync('rsa', {
     modulusLength: 3072,
@@ -24,7 +38,7 @@ before(async () => {
   publicKey = keys.publicKey;
 
   upstream = createServer(async (request, response) => {
-    if (request.url === '/api/v2/health/ready') {
+    if (request.url === '/api/v2/health/ready' || request.url === '/api/v3/atracciones/health') {
       response.writeHead(200).end('{"status":"UP"}');
       return;
     }
@@ -66,11 +80,12 @@ before(async () => {
       INVENTORY_URL: upstreamUrl,
       PAYMENT_URL: upstreamUrl,
       AUDIT_URL: upstreamUrl,
+      CLIENTS_URL: upstreamUrl,
       JWT_PUBLIC_KEY: publicKey,
       JWT_ISSUER: 'urn:descubreec:identity',
       JWT_AUDIENCE: 'urn:descubreec:internal-api',
       RATE_LIMIT_CUSTOMER: '1',
-      CORS_ORIGINS: '',
+      CORS_ORIGINS: 'https://frontend.example.test',
     },
     stdio: ['ignore', 'ignore', 'pipe'],
   });
@@ -201,4 +216,49 @@ test('enforces RBAC, public identity routes, and throttling', async () => {
     headers: { authorization: 'Bearer not-a-jwt' },
   });
   assert.equal(invalid.status, 401);
+});
+
+test('allows public catalog reads while protecting Identity administration', async () => {
+  const publicCatalog = await fetch(`${gatewayUrl}/api/v1/catalog/atracciones?limit=2`);
+  assert.equal(publicCatalog.status, 200);
+  assert.equal((await publicCatalog.json()).url, '/api/v2/atracciones?limit=2');
+
+  const publicSearch = await fetch(`${gatewayUrl}/api/v1/catalog/atracciones/search`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ page: 1 }),
+  });
+  assert.equal(publicSearch.status, 200);
+  assert.equal((await publicSearch.json()).url, '/api/v2/atracciones/search');
+
+  const publicCategories = await fetch(`${gatewayUrl}/api/v1/catalog/atracciones/categorias/arbol`);
+  assert.equal(publicCategories.status, 200);
+  assert.equal((await publicCategories.json()).url, '/api/v2/atracciones/categorias/arbol');
+
+  const publicTelemetry = await fetch(`${gatewayUrl}/api/v1/catalog/observabilidad/eventos`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ events: [] }),
+  });
+  assert.equal(publicTelemetry.status, 200);
+  assert.equal((await publicTelemetry.json()).url, '/api/v2/observabilidad/eventos');
+
+  const noToken = await fetch(`${gatewayUrl}/api/v1/identity/users`);
+  assert.equal(noToken.status, 401);
+
+  const customerToken = await tokenFor();
+  const denied = await fetch(`${gatewayUrl}/api/v1/identity/users`, {
+    headers: { authorization: `Bearer ${customerToken}` },
+  });
+  assert.equal(denied.status, 403);
+
+  const adminToken = await tokenFor({ roles: ['ADMIN'] });
+  const allowed = await fetch(`${gatewayUrl}/api/v1/identity/users?page=1`, {
+    headers: { authorization: `Bearer ${adminToken}` },
+  });
+  assert.equal(allowed.status, 200);
+  assert.equal((await allowed.json()).url, '/api/v2/users?page=1');
+
+  const privateAdminList = await fetch(`${gatewayUrl}/api/v1/catalog/atracciones/admin/clientes`);
+  assert.equal(privateAdminList.status, 401);
 });
